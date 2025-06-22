@@ -1,0 +1,29 @@
+/* 全局样式文件 */
+
+/* 可以在这里重置默认样式或添加全局 CSS 变量 */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f0f2f5; /* Ant Design 风格的背景色 */
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* 如果需要，可以为 Ant Design 组件设置一些全局默认样式 */
+/* 例如，统一设置 PageHeader 的背景色 */
+/* .ant-page-header {
+  background-color: #fff;
+} */
+
+/* 解决Antd某些组件可能导致出现横向滚动条的问题 */
+html, body, #root {
+  height: 100%;
+  /* overflow-x: hidden; */ /* 这个要小心使用，可能会隐藏必要的滚动条 */
+}

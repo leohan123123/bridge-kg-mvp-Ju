@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-11.5 -10.23174 23 20.46348">
+  <title>Vite Logo</title>
+  <defs>
+    <linearGradient id="logoGradient" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#42b883"/>
+      <stop offset="100%" stop-color="#35495e"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#logoGradient)" d="M0 0L10 17.3205L-10 17.3205L0 0Z"/>
+  <path fill="#35495e" d="M0 0L-10 17.3205L-5 17.3205L0 8.66025Z"/>
+  <path fill="#42b883" d="M0 0L0 8.66025L-5 17.3205L-10 17.3205L0 0Z"/>
+</svg>

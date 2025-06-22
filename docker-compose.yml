@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  frontend:
+    # 开发环境配置:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173" # Vite 开发服务器端口
+    volumes:
+      - ./frontend:/app # 实时同步代码
+      - /app/node_modules # 隔离node_modules，防止本地覆盖容器内的
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://backend:8000/api # 后端API地址 (使用服务名)
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    # command: npm run dev # Dockerfile.dev 中已有默认 CMD
+
+    # 生产环境配置 (示例, 通常会使用 override 文件或 profile):
+    # build:
+    #   context: ./frontend
+    #   dockerfile: Dockerfile # 使用生产 Dockerfile
+    #   args: # 构建时参数 (如果 Dockerfile 中有 ARG)
+    #     VITE_API_BASE_URL: /api # 假设生产环境API通过网关或同域名代理
+    # ports:
+    #   - "80:80" # Nginx 默认端口
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile # 多阶段构建的 Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app # 开发时挂载代码以实现热重载
+    env_file:
+      - ./backend/.env # 加载环境变量
+    environment:
+      # PYTHONUNBUFFERED 和 PYTHONPATH 通常在 Dockerfile 中设置
+      - DEBUG=${DEBUG:-True} # 从 .env 读取 DEBUG, 默认为 True
+    depends_on:
+      - neo4j
+    networks:
+      - app-network
+    # 开发模式下使用 uvicorn --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # 生产模式下 (示例, 可能用 Gunicorn):
+    # command: gunicorn -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:8000 app.main:app
+
+  neo4j:
+    image: neo4j:4.4.29 # 使用一个更具体的稳定版本
+    ports:
+      - "7474:7474" # Neo4j Browser
+      - "7687:7687" # Bolt port
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      # - ./neo4j/plugins:/plugins # 如果需要挂载本地插件
+    environment:
+      # NEO4J_AUTH 格式: neo4j/password 或 none (不推荐)
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-s3cr3t} # 从环境变量或 .env 读取, 提供默认值
+      - NEO4J_PLUGINS=["apoc"] # 预装APOC插件
+      # NEO4J_dbms_memory_heap_initial__size: 512m # 调整内存配置 (示例)
+      # NEO4J_dbms_memory_heap_max__size: 1G
+    networks:
+      - app-network
+    restart: unless-stopped # 推荐在生产中设置重启策略
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+
+networks:
+  app-network:
+    driver: bridge
