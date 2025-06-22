@@ -6,7 +6,7 @@ import os
 
 from .core.config import settings # 导入配置
 from .core.logging_config import setup_logging # 导入日志配置
-from .api import health # 导入健康检查路由
+from .api import health, files # 导入健康检查和文件处理路由
 
 # 初始化日志
 setup_logging()
@@ -39,7 +39,8 @@ app.add_middleware(
 )
 
 # 包含API路由
-app.include_router(health.router, prefix=settings.API_PREFIX, tags=["Health"])
+app.include_router(health.router, prefix=f"{settings.API_PREFIX}/health", tags=["Health"]) # 更具体的prefix
+app.include_router(files.router, prefix=f"{settings.API_PREFIX}/files", tags=["Files"]) # 文件处理API
 
 # 根路径 (可选)
 @app.get("/", tags=["Root"])
