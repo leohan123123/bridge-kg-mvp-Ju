@@ -1,7 +1,8 @@
 # backend/app/services/graph_service.py
 import logging
 from typing import List, Dict, Any, Optional
-from neo4j import Driver, Session, Transaction, Record, Neo4jError
+from neo4j import Driver, Session, Transaction, Record
+from neo4j.exceptions import Neo4jError # Corrected import for Neo4jError
 from backend.app.models.graph_models import (
     NodeModel, BridgeModel, ComponentModel, MaterialModel, StandardModel,
     RelationshipData, NodeResponse # Assuming NodeResponse might be useful
@@ -795,28 +796,30 @@ class GraphDatabaseService:
 # For now, it's a simple helper.
 _graph_db_service_instance: Optional[GraphDatabaseService] = None
 
-def get_graph_service(driver: Optional[Driver] = None) -> GraphDatabaseService:
+def get_graph_service() -> GraphDatabaseService:
     """
     Provides a singleton instance of the GraphDatabaseService.
-    If a driver is provided, it can be used to re-initialize (e.g., for tests).
-    In a FastAPI app, the driver would be managed globally and passed at app startup.
+    It internally fetches the Neo4j driver.
+    In a FastAPI app, this is used as a dependency.
     """
     global _graph_db_service_instance
-    if _graph_db_service_instance is None or driver is not None:
-        if driver is None:
-            # This import should be at the top, but for this helper structure:
-            from backend.app.db.neo4j_driver import get_neo4j_driver
-            try:
-                driver = get_neo4j_driver()
-            except ConnectionError as e:
-                logger.error(f"Failed to get Neo4j driver for GraphService: {e}")
-                raise  # Propagate error if driver can't be obtained
+    # If instance doesn't exist, or if we want to allow re-initialization for tests
+    # by setting _graph_db_service_instance to None before calling.
+    if _graph_db_service_instance is None:
+        # Import here to avoid circular dependencies if models are imported at top level by neo4j_driver
+        from backend.app.db.neo4j_driver import get_neo4j_driver
+        try:
+            actual_driver = get_neo4j_driver()
+        except ConnectionError as e:
+            logger.error(f"Failed to get Neo4j driver for GraphService: {e}")
+            # This exception should propagate and be handled by FastAPI or calling code
+            raise RuntimeError(f"Could not obtain Neo4j driver for GraphService: {e}") from e
 
-        if driver is None: # Still None after trying to get it
-             raise RuntimeError("Neo4j driver is not available, cannot create GraphDatabaseService.")
+        if actual_driver is None: # Should not happen if get_neo4j_driver raises ConnectionError
+             raise RuntimeError("Neo4j driver is not available (returned None), cannot create GraphDatabaseService.")
 
-        _graph_db_service_instance = GraphDatabaseService(driver)
-        logger.info("GraphDatabaseService instance created/re-initialized.")
+        _graph_db_service_instance = GraphDatabaseService(actual_driver)
+        logger.info("GraphDatabaseService instance (re)created.")
     return _graph_db_service_instance
 
 # Example of how it might be used in an API endpoint (FastAPI):

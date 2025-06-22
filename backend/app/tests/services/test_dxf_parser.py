@@ -65,7 +65,7 @@ class TestDXFParserService(unittest.TestCase):
     def test_02_layer_parsing(self):
         """测试图层是否被正确解析"""
         layers = self.parsed_data["layers"]
-        expected_layers = ["BEAMS_CONCRETE", "COLUMNS_STEEL", "SLABS_CONCRETE", "TEXT_INFO", "GENERAL_STEEL_PARTS", "0", "Defpoints"]
+        expected_layers = ["BEAMS_CONCRETE", "COLUMNS_STEEL", "SLABS_CONCRETE", "TEXT_INFO", "GENERAL_METAL_ELEMENTS", "0", "Defpoints"] # Changed GENERAL_STEEL_PARTS to GENERAL_METAL_ELEMENTS
         # 注意: ezdxf会自动创建 "0" 和 "Defpoints" 图层 (如果它们在文件中不存在但被引用或标准需要)
 
         parsed_layer_names = [layer["name"] for layer in layers]

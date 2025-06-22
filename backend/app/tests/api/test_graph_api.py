@@ -30,12 +30,13 @@ def cleanup_test_node_via_service(node_label: str, node_id: str):
         print(f"Error during service cleanup for {node_label} {node_id}: {e}")
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function") # Changed scope to function for debugging
 async def async_client() -> AsyncClient:
     """Fixture to create an AsyncClient for making API requests."""
     # Base URL should match your running app if testing against a live server.
     # For integrated tests with TestClient or AsyncClient, it's relative to app.
-    async with AsyncClient(app=app, base_url=f"http://127.0.0.1:8000{settings.API_PREFIX}") as client:
+    # Using "http://testserver" as base_url when app is provided is common practice.
+    async with AsyncClient(app=app, base_url=f"http://testserver{settings.API_PREFIX}") as client:
         yield client
 
 # --- Test Cases for Graph API Endpoints ---
