@@ -10,10 +10,12 @@
 # 目前为空，因为我们还没有具体的业务服务。
 
 # __all__ 可以用来定义 `from .services import *` 时会导入哪些名称
-# __all__ = ["UserService", "DXFParserService", "FileService", "DataPreprocessorService"]
+# __all__ = ["UserService", "DXFParserService", "DataPreprocessorService"] # FileService removed
 
 from .dxf_parser import DXFParserService
-from .file_service import FileService
+# from .file_service import FileService # FileService class does not exist in file_service.py
+# If specific functions from file_service.py are needed at package level, import them directly.
+# For now, removing this problematic import.
 from .data_preprocessor import DataPreprocessorService
 
 pass

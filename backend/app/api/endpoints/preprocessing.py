@@ -145,7 +145,6 @@ async def process_file_by_id(
 @router.post("/process_upload/", status_code=202)
 async def upload_and_process_file(
     background_tasks: BackgroundTasks,
-    background_tasks: BackgroundTasks,
     file: UploadFile = FastAPIFile(..., description="要上传和处理的DXF文件。"),
     file_service: FileService = Depends(get_file_service)
 ):

@@ -1,5 +1,6 @@
 # backend/app/db/neo4j_driver.py
-from neo4j import GraphDatabase, Driver, Neo4jError
+from neo4j import GraphDatabase, Driver
+from neo4j.exceptions import Neo4jError # Corrected import for Neo4jError
 from backend.app.core.config import settings
 import logging
 

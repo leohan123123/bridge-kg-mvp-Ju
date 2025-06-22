@@ -7,191 +7,202 @@ import os
 import shutil
 import uuid
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 from fastapi import UploadFile, HTTPException, status
-from ..models.file_metadata import FileMetadataCreate, FileMetadataResponse # 使用相对导入
-from ..core.config import settings # 假设配置中会有 UPLOAD_DIRECTORY
+from ..models.file_metadata import FileMetadataCreate, FileMetadataResponse
+from ..core.config import settings
 
-# UPLOAD_DIRECTORY = "backend/app/uploads" # 暂时硬编码，理想情况下从配置读取
-# 尝试从 settings 获取，如果 settings 中没有定义，则使用默认值
-UPLOAD_DIRECTORY = getattr(settings, 'UPLOAD_DIRECTORY', "backend/app/uploads")
-ALLOWED_EXTENSIONS = getattr(settings, 'ALLOWED_EXTENSIONS', {".dxf", ".pdf", ".dwg"})
-MAX_FILE_SIZE_BYTES = getattr(settings, 'MAX_FILE_SIZE_BYTES', 50 * 1024 * 1024) # 50MB
+# 模块级常量，可以用作默认值
+DEFAULT_UPLOAD_DIRECTORY = "backend/app/uploads"
+DEFAULT_ALLOWED_EXTENSIONS = {".dxf", ".pdf", ".dwg"}
+DEFAULT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 
-# 确保上传目录存在
-os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+class FileService:
+    def __init__(self, upload_dir: Optional[str] = None):
+        self.upload_directory = upload_dir or getattr(settings, 'UPLOAD_DIRECTORY', DEFAULT_UPLOAD_DIRECTORY)
+        self.allowed_extensions = getattr(settings, 'ALLOWED_EXTENSIONS', DEFAULT_ALLOWED_EXTENSIONS)
+        self.max_file_size_bytes = getattr(settings, 'MAX_FILE_SIZE_BYTES', DEFAULT_MAX_FILE_SIZE_BYTES)
 
-# 简化的内存中元数据存储 (用于演示，实际应用中应使用数据库)
-# 注意：这在多worker环境下会有问题，数据不会共享且重启会丢失
-_mock_metadata_db: List[FileMetadataResponse] = []
+        # 确保上传目录存在
+        os.makedirs(self.upload_directory, exist_ok=True)
+
+        # 简化的内存中元数据存储 (用于演示)
+        # 在多worker或需要持久性的情况下，应替换为数据库
+        self._mock_metadata_db: List[FileMetadataResponse] = []
+
+    async def save_file(self, file: UploadFile) -> Dict[str, Any]:
+        """
+        验证、保存上传的文件，并创建元数据条目。
+        这是 preprocessing.py 中期望的 save_file 方法的整合版本。
+        """
+        original_filename, stored_filename, file_size = await self._save_uploaded_file_to_disk(file)
+
+        metadata_response = await self._create_file_metadata_entry(
+            original_filename=original_filename,
+            stored_filename=stored_filename,
+            file_size_bytes=file_size,
+        )
+        # preprocessing.py 期望返回一个包含 full_path, file_id, filename 的字典
+        full_path = os.path.join(self.upload_directory, stored_filename)
+        return {
+            "file_id": metadata_response.id, # stored_filename is used as id
+            "filename": original_filename,
+            "full_path": full_path,
+            "content_type": file.content_type, # FastAPI UploadFile has this
+            "size_bytes": file_size,
+            "metadata": metadata_response.model_dump() if hasattr(metadata_response, 'model_dump') else metadata_response.dict()
+        }
 
 
-async def save_uploaded_file(file: UploadFile) -> Tuple[str, str, int]:
-    """
-    验证并保存单个上传的文件。
+    async def _save_uploaded_file_to_disk(self, file: UploadFile) -> Tuple[str, str, int]:
+        """
+        (内部方法) 验证并保存单个上传的文件到磁盘。
+        """
+        original_filename = file.filename
+        file_extension = os.path.splitext(original_filename)[1].lower()
+        if file_extension not in self.allowed_extensions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"文件类型 '{file_extension}' 不被允许。只接受 {', '.join(self.allowed_extensions)} 文件。"
+            )
 
-    Args:
-        file: FastAPI的UploadFile对象.
+        contents = await file.read()
+        file_size = len(contents)
+        await file.seek(0)
 
-    Returns:
-        Tuple[str, str, int]: 包含原始文件名, 存储的文件名和文件大小 (字节) 的元组.
+        if file_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"文件 '{original_filename}' 为空，不允许上传空文件。"
+            )
 
-    Raises:
-        HTTPException: 如果文件类型或大小无效.
-    """
-    # 1. 文件类型验证
-    original_filename = file.filename
-    file_extension = os.path.splitext(original_filename)[1].lower()
-    if file_extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"文件类型 '{file_extension}' 不被允许。只接受 {', '.join(ALLOWED_EXTENSIONS)} 文件。"
+        if file_size > self.max_file_size_bytes:
+            max_size_mb = self.max_file_size_bytes / (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"文件 '{original_filename}' 大小 ({file_size / (1024 * 1024):.2f}MB) 超过 {max_size_mb:.0f}MB 限制。"
+            )
+
+        stored_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(self.upload_directory, stored_filename)
+
+        try:
+            with open(file_path, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+        except IOError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"无法保存文件 '{original_filename}' 到服务器。错误: {e}"
+            )
+        finally:
+            await file.close()
+
+        return original_filename, stored_filename, file_size
+
+    async def _create_file_metadata_entry(
+        self,
+        original_filename: str,
+        stored_filename: str,
+        file_size_bytes: int,
+        file_type: Optional[str] = None,
+    ) -> FileMetadataResponse:
+        """
+        (内部方法) 创建并存储文件元数据记录。
+        """
+        if not file_type:
+            file_type = os.path.splitext(original_filename)[1].lower()
+
+        metadata_create = FileMetadataCreate(
+            original_filename=original_filename,
+            stored_filename=stored_filename,
+            file_type=file_type,
+            file_size_bytes=file_size_bytes,
         )
 
-    # 2. 文件大小验证 (读取文件内容来确定实际大小)
-    # 使用 SpooledTemporaryFile (FastAPI/Starlette 默认行为) 时，
-    # file.file 是一个类文件对象。我们需要读取它来获取内容和大小。
-    contents = await file.read()
-    file_size = len(contents)
-    await file.seek(0) # 重置文件指针，以便后续可能的再次读取或保存
-
-    if file_size == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"文件 '{original_filename}' 为空，不允许上传空文件。"
+        metadata_response = FileMetadataResponse(
+            id=stored_filename, # Use stored_filename as ID
+            uploaded_at=datetime.utcnow(),
+            file_url=f"/files/download/{stored_filename}", # Example URL
+            **(metadata_create.model_dump() if hasattr(metadata_create, 'model_dump') else metadata_create.dict())
         )
+        self._mock_metadata_db.append(metadata_response)
+        return metadata_response
 
-    if file_size > MAX_FILE_SIZE_BYTES:
-        max_size_mb = MAX_FILE_SIZE_BYTES / (1024 * 1024)
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"文件 '{original_filename}' 大小 ({file_size / (1024 * 1024):.2f}MB) 超过 {max_size_mb:.0f}MB 限制。"
-        )
+    def get_file_metadata(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """
+        根据文件ID获取单个文件的元数据 (preprocessing.py 期望的格式)。
+        注意：原先的 get_file_metadata_by_id 返回 FileMetadataResponse。
+        preprocessing.py 中的 file_service.get_file_metadata(file_id) 期望返回一个字典
+        包含 'full_path' 和 'filename'。
+        """
+        for metadata_model in self._mock_metadata_db:
+            if metadata_model.id == file_id: # file_id is stored_filename
+                full_path = os.path.join(self.upload_directory, metadata_model.stored_filename)
+                return {
+                    "file_id": metadata_model.id,
+                    "filename": metadata_model.original_filename,
+                    "full_path": full_path,
+                    "content_type": metadata_model.file_type, # Assuming file_type is content_type like
+                    "size_bytes": metadata_model.file_size_bytes,
+                    "metadata_model": metadata_model # Keep original model if needed elsewhere
+                }
+        return None
 
-    # 3. 生成唯一文件名 (保留原始扩展名)
-    stored_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIRECTORY, stored_filename)
-
-    # 4. 保存文件到磁盘
-    try:
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(file.file, f) # 使用 shutil.copyfileobj 更高效
-    except IOError as e:
-        # server_error_logging(e) # 假设有日志记录
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"无法保存文件 '{original_filename}' 到服务器。错误: {e}"
-        )
-    finally:
-        await file.close() # 确保关闭文件
-
-    return original_filename, stored_filename, file_size
-
-
-async def create_file_metadata_entry(
-    original_filename: str,
-    stored_filename: str,
-    file_size_bytes: int,
-    file_type: Optional[str] = None,
-    # uploader_id: Optional[str] = None # 如果需要记录上传者
-) -> FileMetadataResponse:
-    """
-    创建并存储文件元数据记录。
-    在实际应用中，这里会与数据库交互。
-    """
-    if not file_type:
-        file_type = os.path.splitext(original_filename)[1].lower()
-
-    metadata_create = FileMetadataCreate(
-        original_filename=original_filename,
-        stored_filename=stored_filename,
-        file_type=file_type,
-        file_size_bytes=file_size_bytes,
-        # uploader_id=uploader_id,
-    )
-
-    # 模拟数据库存储和ID生成
-    # 在真实场景中，数据库会生成 ID，uploaded_at 会是数据库的 `default=now()`
-    metadata_response = FileMetadataResponse(
-        id=stored_filename, # 使用存储文件名作为唯一ID (简化)
-        uploaded_at=datetime.utcnow(), # 生成上传时间
-        file_url=f"/files/download/{stored_filename}", # 构造一个假设的下载URL
-        # Pydantic v2 使用 model_dump()，Pydantic v1 使用 dict()
-        **metadata_create.model_dump() if hasattr(metadata_create, 'model_dump') else metadata_create.dict()
-    )
-    _mock_metadata_db.append(metadata_response) # 添加到模拟数据库
-    return metadata_response
+    async def get_all_file_metadata_models(self) -> List[FileMetadataResponse]:
+        """
+        获取所有文件的元数据模型列表。
+        """
+        return list(self._mock_metadata_db)
 
 
-async def get_all_file_metadata() -> List[FileMetadataResponse]:
-    """
-    获取所有文件的元数据列表。
-    在实际应用中，这里会从数据库查询。
-    """
-    # 返回副本以防外部修改
-    return list(_mock_metadata_db)
+    async def get_file_metadata_model_by_id(self, file_id: str) -> Optional[FileMetadataResponse]:
+        """
+        根据文件ID获取单个文件的元数据模型。
+        """
+        for metadata in self._mock_metadata_db:
+            if metadata.id == file_id:
+                return metadata
+        return None
 
+    async def delete_file_and_metadata(self, file_id: str) -> bool:
+        """
+        根据文件ID（存储文件名）删除文件及其元数据。
+        """
+        metadata_to_delete = None
+        for metadata_model in self._mock_metadata_db:
+            if metadata_model.id == file_id:
+                metadata_to_delete = metadata_model
+                break
 
-async def get_file_metadata_by_id(file_id: str) -> Optional[FileMetadataResponse]:
-    """
-    根据文件ID（在此简化示例中为存储文件名）获取单个文件的元数据。
-    """
-    for metadata in _mock_metadata_db:
-        if metadata.id == file_id:
-            return metadata
-    return None
+        if not metadata_to_delete:
+            return False
 
+        file_path = os.path.join(self.upload_directory, metadata_to_delete.stored_filename)
 
-async def delete_file_and_metadata(file_id: str) -> bool:
-    """
-    根据文件ID（存储文件名）删除文件及其元数据。
-    """
-    global _mock_metadata_db
-    metadata_to_delete = None
-    for metadata in _mock_metadata_db:
-        if metadata.id == file_id: # file_id 在这里是 stored_filename
-            metadata_to_delete = metadata
-            break
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError as e:
+            print(f"警告: 无法删除物理文件 '{file_path}': {e}")
+            # Decide if this should be a critical failure or just a warning
 
-    if not metadata_to_delete:
-        return False # 文件元数据未找到
+        self._mock_metadata_db = [m for m in self._mock_metadata_db if m.id != file_id]
+        return True
 
-    file_path = os.path.join(UPLOAD_DIRECTORY, metadata_to_delete.stored_filename)
+    async def get_physical_file_path(self, stored_filename: str) -> Optional[str]:
+        """
+        获取存储文件的物理路径。
+        """
+        path = os.path.join(self.upload_directory, stored_filename)
+        if os.path.exists(path) and os.path.isfile(path):
+            return path
+        return None
 
-    # 1. 删除物理文件
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        else:
-            # 文件已不存在，但元数据还在，也算部分成功（清除了元数据）
-            pass
-    except OSError as e:
-        # server_error_logging(e) # 假设有日志记录
-        # 如果删除文件失败，可能需要决定是否也回滚元数据删除或标记为孤立
-        # 为简单起见，我们继续删除元数据
-        print(f"警告: 无法删除物理文件 '{file_path}': {e}")
-        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"无法删除物理文件 '{metadata_to_delete.original_filename}'.")
-
-
-    # 2. 删除元数据条目
-    _mock_metadata_db = [m for m in _mock_metadata_db if m.id != file_id]
-
-    # 病毒扫描占位符
-    # print(f"TODO: 对文件 {metadata_to_delete.original_filename} 执行病毒扫描 (模拟)")
-
-    return True
-
-
-# 可以在此添加更多服务函数，例如：
-# - 更新文件元数据
-# - 按条件搜索/筛选文件
-# - 获取文件的物理路径供下载等
-async def get_physical_file_path(stored_filename: str) -> Optional[str]:
-    """
-    获取存储文件的物理路径。
-    """
-    path = os.path.join(UPLOAD_DIRECTORY, stored_filename)
-    if os.path.exists(path) and os.path.isfile(path):
-        return path
-    return None
+# Example of how FileService might be instantiated and used by preprocessing.py:
+# file_service_instance = FileService(upload_dir=settings.UPLOAD_DIRECTORY)
+# metadata = await file_service_instance.save_file(uploaded_file_object)
+# file_info = file_service_instance.get_file_metadata(some_file_id)
+# if file_info:
+#     path = file_info["full_path"]
+#     name = file_info["filename"]
