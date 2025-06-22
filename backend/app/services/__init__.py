@@ -10,6 +10,10 @@
 # 目前为空，因为我们还没有具体的业务服务。
 
 # __all__ 可以用来定义 `from .services import *` 时会导入哪些名称
-# __all__ = ["UserService"]
+# __all__ = ["UserService", "DXFParserService", "FileService", "DataPreprocessorService"]
+
+from .dxf_parser import DXFParserService
+from .file_service import FileService
+from .data_preprocessor import DataPreprocessorService
 
 pass
