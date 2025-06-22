@@ -51,3 +51,26 @@ async def import_dxf_knowledge(
     except Exception as e:
         # Very basic error handling for PoC
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to import DXF data: {str(e)}")
+
+
+VALID_NODE_TYPES = ["Bridge", "Component", "Material"]
+
+@router.get("/nodes/{node_type}")
+async def get_nodes_by_type(
+    node_type: str,
+    graph_service: GraphDatabaseService = Depends(get_graph_service)
+):
+    if node_type not in VALID_NODE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid node_type: {node_type}. Allowed types are: {', '.join(VALID_NODE_TYPES)}"
+        )
+    try:
+        nodes_data = graph_service.get_nodes_by_label(label=node_type)
+        return {"nodes": nodes_data, "count": len(nodes_data)}
+    except Exception as e:
+        # Log the exception e for debugging if necessary
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching nodes: {str(e)}"
+        )
