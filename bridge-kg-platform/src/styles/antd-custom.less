@@ -1,0 +1,100 @@
+// Ant Design 自定义主题配置文件
+// 引入 Ant Design 默认主题变量，以便覆盖
+@import "~antd/lib/style/themes/default.less";
+
+//---------------------------------------------------------------------
+// 1. 全局品牌颜色定义 (桥梁工程相关配色)
+//---------------------------------------------------------------------
+@primary-color: #264E70; // 深蓝灰色 (结构感、专业)
+// @primary-color: #1890ff; // Ant Design 默认蓝，如果不想改动太大
+
+// 辅助色 (Ant Design 默认已有不错的定义，这里可以按需覆盖)
+// @success-color: #52c41a;
+// @warning-color: #faad14;
+// @error-color: #f5222d;
+// @info-color: @primary-color; // 信息色通常与主色一致或相近
+
+// 链接颜色
+// @link-color: @primary-color;
+// @link-hover-color: color(~`colorPalette('@{link-color}', 5) `);
+// @link-active-color: color(~`colorPalette('@{link-color}', 7) `);
+
+//---------------------------------------------------------------------
+// 2. 字体与文本颜色
+//---------------------------------------------------------------------
+// @typography-title-font-weight: 600;
+// @text-color: fade(#000, 85%); // 默认文本颜色 (亮色模式)
+// @text-color-secondary: fade(#000, 45%);
+
+//---------------------------------------------------------------------
+// 3. 布局与背景颜色
+//---------------------------------------------------------------------
+// 亮色模式下的布局背景 (如果 App.jsx 中 ConfigProvider 未指定，则这些生效)
+@layout-body-background: #f0f2f5;
+@layout-header-background: #ffffff;
+@layout-sider-background: @primary-color; // 侧边栏使用主色调，或者经典的暗色 #001529
+
+// 组件背景
+@component-background: #ffffff;
+@popover-background: @component-background;
+@modal-mask-bg: fade(#000, 45%);
+
+//---------------------------------------------------------------------
+// 4. 边框与分割线
+//---------------------------------------------------------------------
+@border-color-base: hsv(0, 0, 85%); // 边框颜色
+@border-color-split: hsv(0, 0, 94%); // 分割线颜色
+// @border-radius-base: 4px;
+
+//---------------------------------------------------------------------
+// 5. 针对暗色模式的特定覆盖 (如果 antd 的 darkAlgorithm 不够用)
+//    通常 antd 的暗黑模式算法会自动调整大部分颜色。
+//    如果需要在 body.dark 类下强制修改某些变量，可以在这里进行。
+//    注意: Vite + Less 可能需要插件 (如 vite-plugin-theme) 来实现动态主题切换的CSS变量生成。
+//    目前的实现主要依赖 ConfigProvider 的 algorithm 切换。
+//    这里的 Less 变量主要影响编译时的默认值。
+//    如果想让 Less 变量也感知亮暗模式，需要更复杂的配置。
+//    一个简单的方式是，如果 App.jsx 中 ConfigProvider 的 token 覆盖了某个值，
+//    那么这里的 Less 变量可能不会在运行时动态改变（除非重新编译CSS）。
+//    因此，动态性强的颜色（如背景）在 App.jsx 中用 ConfigProvider 控制可能更直接。
+//    而品牌颜色等相对固定的，在 Less 中定义更好。
+//---------------------------------------------------------------------
+
+// 示例：如果希望Sider在亮色模式下也是暗色的 (经典布局)
+// .ant-layout-sider {
+//   background: #001529 !important; // 或者 @layout-sider-background-light
+// }
+// .ant-menu.ant-menu-dark {
+//   background: #001529 !important; // 或者 @menu-dark-bg
+// }
+
+// 为了让 Sider 和 Menu 在亮色模式下也是深色的 (像 Ant Design Pro 的经典布局)
+// 并且让 App.jsx 中的 currentTheme 控制整体算法（亮/暗）
+// Sider 和 Menu 组件自身有 theme prop (dark/light)
+// AppSider.jsx 中已设置 theme="dark" for Sider and Menu
+// 所以 @layout-sider-background 和 @menu-dark-bg 等变量会影响它们。
+// 我们将 Sider 背景设置为深色。
+@layout-sider-background: #001529; // 经典暗色Sider
+@menu-dark-bg: #001529;
+@menu-dark-submenu-bg: #000c17;
+@menu-dark-item-active-bg: @primary-color;
+@menu-dark-highlight-color: @primary-color;
+@menu-dark-color: fade(#fff, 65%);
+@menu-dark-item-hover-bg: fade(@primary-color, 20%);
+
+
+// 确保 Vite Less 配置中 javascriptEnabled: true
+// 在 vite.config.js 中已经配置过了：
+// css: {
+//   preprocessorOptions: {
+//     less: {
+//       javascriptEnabled: true,
+//     },
+//   },
+// },
+
+// 添加一个标记，证明文件被加载
+body::after {
+  content: "antd-custom-theme-loaded";
+  display: none;
+}
