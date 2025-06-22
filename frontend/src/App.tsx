@@ -9,6 +9,7 @@ const { Title } = Typography;
 // 页面组件 - 使用 React.lazy 进行代码分割和懒加载
 const HomePage = lazy(() => import('./pages/HomePage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
+const KnowledgeQueryPage = lazy(() => import('./pages/KnowledgeQuery')); // 新增知识图谱查询页面
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage')); // 404页面
 
 const App: React.FC = () => {
@@ -19,7 +20,8 @@ const App: React.FC = () => {
   // 导航菜单项
   const menuItems = [
     { key: '1', label: <Link to="/">首页</Link> },
-    { key: '2', label: <Link to="/about">关于</Link> },
+    { key: '2', label: <Link to="/knowledge-query">知识查询</Link> }, // 修改/新增菜单项
+    { key: '3', label: <Link to="/about">关于</Link> },
     // 添加更多导航项
   ];
 
@@ -55,6 +57,7 @@ const App: React.FC = () => {
                 <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />
+                  <Route path="/knowledge-query" element={<KnowledgeQueryPage />} /> {/* 新增路由 */}
                   {/* 404 Not Found 路由应该放在最后 */}
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
