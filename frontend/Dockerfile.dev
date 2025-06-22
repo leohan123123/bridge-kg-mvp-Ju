@@ -1,0 +1,25 @@
+# Dockerfile for Frontend Development Environment
+FROM node:18-alpine as development
+
+WORKDIR /app
+
+# 复制 package.json 和 package-lock.json (或 yarn.lock)
+COPY package*.json ./
+# COPY yarn.lock ./ # 如果使用Yarn
+
+# 安装依赖
+RUN npm install
+# RUN yarn install # 如果使用Yarn
+
+# 复制所有其他文件到工作目录
+# 注意：在 docker-compose.yml 中我们使用了 volumes 来挂载整个 ./frontend 目录，
+# 所以这里的 COPY . . 主要用于构建独立的镜像（如果需要），或者作为一种备份。
+# 对于开发流程，volumes 的优先级更高，会覆盖镜像中的内容。
+COPY . .
+
+# 暴露 Vite 开发服务器的端口
+EXPOSE 5173
+
+# 默认启动命令 (会被 docker-compose.yml 中的 command 覆盖，如果设置了)
+CMD ["npm", "run", "dev"]
+# CMD ["yarn", "dev"] # 如果使用Yarn

@@ -1,0 +1,36 @@
+/* App.tsx 组件的特定样式 */
+
+/* #components-layout-demo-responsive .logo {
+  height: 32px;
+  margin: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+} */
+
+.site-layout-sub-header-background {
+  background: #fff;
+}
+
+.site-layout-background {
+  background: #fff;
+}
+
+/* 可以添加更多自定义样式 */
+/* 例如，调整 Sider 的宽度 */
+/* .ant-layout-sider {
+  flex: 0 0 250px !important;
+  max-width: 250px !important;
+  min-width: 250px !important;
+  width: 250px !important;
+} */
+
+/* 内容区域的最小高度，确保Footer在底部 */
+/* .ant-layout-content > div {
+  min-height: calc(100vh - 64px - 69px - 48px); // Header - Footer - Content-Margin
+} */
