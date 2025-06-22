@@ -40,7 +40,15 @@ app.add_middleware(
 
 # 包含API路由
 app.include_router(health.router, prefix=f"{settings.API_PREFIX}/health", tags=["Health"]) # 更具体的prefix
-app.include_router(files.router, prefix=f"{settings.API_PREFIX}/files", tags=["Files"]) # 文件处理API
+# app.include_router(files.router, prefix=f"{settings.API_PREFIX}/files", tags=["Files"]) # 旧的文件处理API，将被endpoints下的替换
+
+# 从 endpoints 导入路由
+from .api.endpoints import files as files_endpoint
+from .api.endpoints import preprocessing as preprocessing_endpoint
+
+app.include_router(files_endpoint.router, prefix=f"{settings.API_PREFIX}/files", tags=["Files"])
+app.include_router(preprocessing_endpoint.router, prefix=f"{settings.API_PREFIX}/preprocessing", tags=["Preprocessing"])
+
 
 # 根路径 (可选)
 @app.get("/", tags=["Root"])
