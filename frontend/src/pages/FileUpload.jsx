@@ -1,7 +1,7 @@
 // frontend/src/pages/FileUpload.jsx
 import React, { useState, useEffect } from 'react';
-import { Upload, Button, message, List, Typography, Space, Tooltip, Progress, Card, Row, Col } from 'antd';
-import { UploadOutlined, FilePdfOutlined, FileWordOutlined, FileExcelOutlined, FilePptOutlined, FileImageOutlined, FileTextOutlined, FileZipOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined, PaperClipOutlined, InboxOutlined } from '@ant-design/icons';
+import { Upload, Button, message, List, Typography, Space, Tooltip, Progress, Card, Row, Col, Alert } from 'antd'; // Added Alert
+import { UploadOutlined, FilePdfOutlined, FileWordOutlined, FileExcelOutlined, FilePptOutlined, FileImageOutlined, FileTextOutlined, FileZipOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined, PaperClipOutlined, InboxOutlined, CloudUploadOutlined } from '@ant-design/icons'; // Added CloudUploadOutlined
 // 假设我们有一个 apiClient 用于 API 调用
 import apiClient from '../utils/axios'; // 确保路径正确
 
@@ -18,6 +18,11 @@ const FileUploadPage = () => {
   const [uploadedFiles, setUploadedFiles] = useState([]); // 从后端获取的已上传文件列表
   const [uploading, setUploading] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
+
+  // State for knowledge graph import
+  const [importingFileId, setImportingFileId] = useState(null);
+  const [importStatus, setImportStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
+  const [importMessage, setImportMessage] = useState('');
 
   // 获取已上传文件列表的函数
   const fetchUploadedFiles = async () => {
@@ -219,12 +224,24 @@ const FileUploadPage = () => {
                         // disabled={uploading} // 如果有全局uploading状态可以考虑
                       />
                     </Tooltip>,
+                    // Add Import Knowledge Graph button for DXF files
+                    ...(item.original_filename.toLowerCase().endsWith('.dxf') ? [
+                      <Tooltip title="导入知识图谱" key={`import-${item.id}`}>
+                        <Button
+                          type="link"
+                          icon={<CloudUploadOutlined />}
+                          loading={importStatus === 'loading' && importingFileId === item.id}
+                          disabled={importStatus === 'loading'} // Disable if any import is in progress
+                          onClick={() => handleImportKnowledgeGraph(item.id, item.original_filename)}
+                        />
+                      </Tooltip>
+                    ] : []),
                     /* 预览功能占位，当前 MVP 范围外
                     <Tooltip title="预览 (待实现)">
                       <Button type="link" icon={<EyeOutlined />} disabled />
                     </Tooltip>,
                     */
-                    <Tooltip title="删除">
+                    <Tooltip title="删除" key={`delete-${item.id}`}>
                       <Button
                         type="link"
                         danger
@@ -245,6 +262,13 @@ const FileUploadPage = () => {
                         <Text type="secondary" style={{ fontSize: '12px' }}>
                           上传时间: {new Date(item.uploaded_at).toLocaleString()}
                         </Text>
+                        {/* Display import status for the specific file */}
+                        {importingFileId === item.id && importStatus === 'success' && (
+                          <Alert message={importMessage || "导入成功！"} type="success" showIcon style={{marginTop: '8px', fontSize: '12px', padding: '4px 8px'}} />
+                        )}
+                        {importingFileId === item.id && importStatus === 'error' && (
+                          <Alert message={importMessage || "导入失败。"} type="error" showIcon style={{marginTop: '8px', fontSize: '12px', padding: '4px 8px'}}/>
+                        )}
                         {/* <Text type="secondary" style={{fontSize: '12px'}}>ID: {item.id}</Text> */}
                       </Space>
                     }
@@ -258,5 +282,41 @@ const FileUploadPage = () => {
     </div>
   );
 };
+
+// Helper function to implement knowledge graph import
+const handleImportKnowledgeGraph = async (fileId, fileName, setImportingFileId, setImportStatus, setImportMessage) => {
+  setImportingFileId(fileId);
+  setImportStatus('loading');
+  setImportMessage(''); // Clear previous messages
+  const key = `import-${fileId}`; // Unique key for Ant Design message
+  message.loading({ content: `正在导入知识图谱: ${fileName}...`, key, duration: 0 });
+
+  try {
+    // Assuming the API endpoint is /api/v1/knowledge/import-dxf/{file_id}
+    // and apiClient is already configured with baseURL
+    const response = await apiClient.post(`/knowledge/import-dxf/${fileId}`);
+
+    // Assuming backend returns a success message or relevant data
+    // For example: { message: "Successfully imported knowledge from DXF file." }
+    setImportStatus('success');
+    const successMsg = response?.message || `文件 "${fileName}" 的知识图谱导入成功！`;
+    setImportMessage(successMsg);
+    message.success({ content: successMsg, key, duration: 5 });
+    // Optionally, refresh related data or update UI further if needed
+    // fetchUploadedFiles(); // Might not be necessary unless import changes file metadata shown
+
+  } catch (error) {
+    console.error(`导入知识图谱失败 (${fileName}):`, error);
+    setImportStatus('error');
+    const errorDetail = error.response?.data?.detail || error.message || '未知错误';
+    const errorMsg = `文件 "${fileName}" 知识图谱导入失败: ${errorDetail}`;
+    setImportMessage(errorMsg);
+    message.error({ content: errorMsg, key, duration: 8 });
+  } finally {
+    // Keep importingFileId set to the last imported file to show status messages
+    // setImportingFileId(null); // Or reset after a delay, or when user dismisses message
+  }
+};
+
 
 export default FileUploadPage;
