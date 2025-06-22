@@ -69,10 +69,12 @@ app.include_router(health.router, prefix=f"{settings.API_PREFIX}/health", tags=[
 from .api.endpoints import files as files_endpoint
 from .api.endpoints import preprocessing as preprocessing_endpoint
 from .api.endpoints import graph_api as graph_endpoint # 新增导入
+from .api.endpoints import knowledge as knowledge_endpoint # Import the new knowledge router
 
 app.include_router(files_endpoint.router, prefix=f"{settings.API_PREFIX}/files", tags=["Files"])
 app.include_router(preprocessing_endpoint.router, prefix=f"{settings.API_PREFIX}/preprocessing", tags=["Preprocessing"])
 app.include_router(graph_endpoint.router, prefix=f"{settings.API_PREFIX}/graph", tags=["Graph"]) # 新增图数据库API路由
+app.include_router(knowledge_endpoint.router, prefix=f"{settings.API_PREFIX}/knowledge", tags=["Knowledge"]) # Add knowledge router
 
 
 # 根路径 (可选)
