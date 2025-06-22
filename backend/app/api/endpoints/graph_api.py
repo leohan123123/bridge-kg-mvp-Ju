@@ -1,0 +1,450 @@
+# backend/app/api/endpoints/graph_api.py
+import logging
+from typing import List, Dict, Any, Optional, Union
+
+from fastapi import APIRouter, Depends, HTTPException, Body, Path, Query
+
+from backend.app.models.graph_models import (
+    NodeModel, # Base for type hinting
+    BridgeModel, ComponentModel, MaterialModel, StandardModel,
+    BridgeCreateSchema, ComponentCreateSchema, MaterialCreateSchema, StandardCreateSchema,
+    BridgeUpdateSchema, ComponentUpdateSchema, MaterialUpdateSchema, StandardUpdateSchema,
+    RelationshipData, NodeResponse, RelationshipResponse
+)
+from backend.app.services.graph_service import GraphDatabaseService, get_graph_service
+from neo4j import Driver
+# It's better to get the service via DI rather than driver directly in endpoint
+# from backend.app.db.neo4j_driver import get_db_session # For direct session use if needed
+# from neo4j import Session as Neo4jSession # Type hint for session
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# Helper to map Pydantic models based on label/model_name string
+NODE_MODEL_MAP = {
+    "Bridge": BridgeModel,
+    "Component": ComponentModel,
+    "Material": MaterialModel,
+    "Standard": StandardModel,
+}
+NODE_CREATE_SCHEMA_MAP = {
+    "Bridge": BridgeCreateSchema,
+    "Component": ComponentCreateSchema,
+    "Material": MaterialCreateSchema,
+    "Standard": StandardCreateSchema,
+}
+NODE_UPDATE_SCHEMA_MAP = {
+    "Bridge": BridgeUpdateSchema,
+    "Component": ComponentUpdateSchema,
+    "Material": MaterialUpdateSchema,
+    "Standard": StandardUpdateSchema,
+}
+
+# --- Database Initialization ---
+@router.post("/initialize", summary="初始化图数据库索引和约束", status_code=200)
+async def initialize_database(
+    service: GraphDatabaseService = Depends(get_graph_service)
+) -> Dict[str, str]:
+    """
+    初始化Neo4j数据库，创建预定义的索引和约束。
+    这是一个幂等操作。
+    """
+    try:
+        results = service.create_indexes_and_constraints()
+        logger.info("Database initialization (indexes/constraints) API called.")
+        return {"message": "Database initialization process finished.", "details": results}
+    except Exception as e:
+        logger.error(f"Error during database initialization: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database initialization failed: {str(e)}")
+
+# --- Generic Node Operations (less preferred, use type-specific below) ---
+# These are more generic but might be harder to use with FastAPI's automatic request body parsing
+# and Pydantic model validation if the model type is dynamic in the path.
+
+# --- Type-Specific Node CRUD Endpoints ---
+
+# Common function to get model types or raise HTTP 404
+def _get_model_types(model_name: str):
+    model_name_capitalized = model_name.capitalize()
+    if model_name_capitalized not in NODE_MODEL_MAP:
+        raise HTTPException(status_code=404, detail=f"Node type '{model_name_capitalized}' not found/supported.")
+
+    model_class = NODE_MODEL_MAP[model_name_capitalized]
+    create_schema_class = NODE_CREATE_SCHEMA_MAP[model_name_capitalized]
+    update_schema_class = NODE_UPDATE_SCHEMA_MAP[model_name_capitalized]
+    return model_class, create_schema_class, update_schema_class, model_name_capitalized # Return capitalized label
+
+
+# Create Node (e.g., POST /api/graph/bridges/)
+@router.post(
+    "/nodes/{model_name}",
+    response_model=NodeModel, # Generic response, or use Union of specific models
+    summary="创建指定类型的节点",
+    status_code=201
+)
+async def create_typed_node(
+    model_name: str = Path(..., description="节点模型的名称 (e.g., 'Bridge', 'Component')"),
+    node_data: Union[BridgeCreateSchema, ComponentCreateSchema, MaterialCreateSchema, StandardCreateSchema] = Body(...), # This Union is tricky for FastAPI to auto-select based on path
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    """
+    创建指定类型的节点。请求体应符合对应类型的CreateSchema。
+    - `model_name`: URL路径参数，如 "Bridge", "Component", "Material", "Standard".
+    - **Request Body**: JSON对象，其结构取决于 `model_name`.
+        - For "Bridge": `BridgeCreateSchema`
+        - For "Component": `ComponentCreateSchema`
+        - etc.
+    """
+    # FastAPI doesn't automatically pick the Union member based on path param.
+    # We need to validate manually or have separate endpoints.
+    # For now, let's assume the correct type is passed and Pydantic validates it.
+    # A better approach is separate endpoints or a more complex request body that includes the type.
+
+    _model_class, _create_schema_class, _update_schema_class, label = _get_model_types(model_name)
+
+    # Validate if the provided node_data actually matches the expected create_schema_class
+    if not isinstance(node_data, _create_schema_class):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid request body for node type '{label}'. Expected schema: {_create_schema_class.__name__}"
+        )
+
+    # The `id` will be generated by Pydantic's default_factory in the full Model.
+    # We need to construct the full Model instance before passing to service.
+    # The service's create_node expects a NodeModel instance (e.g. BridgeModel).
+
+    # Construct the full model (e.g. BridgeModel) from the create schema (e.g. BridgeCreateSchema)
+    # This will also generate the 'id' via NodeModel's default_factory.
+    full_node_to_create = _model_class(**node_data.dict()) # Pydantic V1
+
+    try:
+        created_node_props = service.create_node(label=label, node_data=full_node_to_create)
+        if created_node_props is None:
+            raise HTTPException(status_code=500, detail=f"Failed to create {label} node.")
+        # Return the full model based on the created properties
+        return _model_class(**created_node_props)
+    except ValueError as ve: # E.g., duplicate ID from service layer
+        raise HTTPException(status_code=409, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error creating {label} node: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+
+# Get all nodes of a type (e.g., GET /api/graph/bridges/)
+@router.get(
+    "/nodes/{model_name}",
+    response_model=List[NodeModel], # Or Union of List[BridgeModel], etc.
+    summary="获取指定类型的所有节点 (分页)"
+)
+async def get_all_typed_nodes(
+    model_name: str = Path(..., description="节点模型的名称 (e.g., 'Bridge', 'Component')"),
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(100, ge=1, le=1000, description="返回的最大记录数"),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    model_class, _c, _u, label = _get_model_types(model_name)
+    try:
+        nodes_props_list = service.get_nodes_by_label(label=label, skip=skip, limit=limit)
+        return [model_class(**props) for props in nodes_props_list]
+    except Exception as e:
+        logger.error(f"Error fetching {label} nodes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch {label} nodes: {str(e)}")
+
+# Get node by ID (e.g., GET /api/graph/bridges/{node_id})
+@router.get(
+    "/nodes/{model_name}/{node_id}",
+    response_model=NodeModel, # Or Union
+    summary="通过ID获取指定类型的节点"
+)
+async def get_typed_node_by_id(
+    model_name: str = Path(..., description="节点模型的名称"),
+    node_id: str = Path(..., description="节点的唯一ID"),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    model_class, _c, _u, label = _get_model_types(model_name)
+    try:
+        node_props = service.get_node_by_id(label=label, node_id=node_id)
+        if node_props is None:
+            raise HTTPException(status_code=404, detail=f"{label} node with ID '{node_id}' not found.")
+        return model_class(**node_props)
+    except Exception as e:
+        logger.error(f"Error fetching {label} node with ID {node_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch {label} node: {str(e)}")
+
+# Update node (e.g., PUT /api/graph/bridges/{node_id})
+@router.put(
+    "/nodes/{model_name}/{node_id}",
+    response_model=NodeModel, # Or Union
+    summary="更新指定类型的节点"
+)
+async def update_typed_node(
+    model_name: str = Path(..., description="节点模型的名称"),
+    node_id: str = Path(..., description="节点的唯一ID"),
+    node_update_data: Union[BridgeUpdateSchema, ComponentUpdateSchema, MaterialUpdateSchema, StandardUpdateSchema] = Body(...),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    model_class, _c, update_schema_class, label = _get_model_types(model_name)
+
+    if not isinstance(node_update_data, update_schema_class):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid request body for updating node type '{label}'. Expected schema: {update_schema_class.__name__}"
+        )
+
+    try:
+        updated_node_props = service.update_node(label=label, node_id=node_id, node_update_data=node_update_data)
+        if updated_node_props is None:
+            raise HTTPException(status_code=404, detail=f"{label} node with ID '{node_id}' not found for update.")
+        return model_class(**updated_node_props)
+    except Exception as e:
+        logger.error(f"Error updating {label} node {node_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update {label} node: {str(e)}")
+
+# Delete node (e.g., DELETE /api/graph/bridges/{node_id})
+@router.delete(
+    "/nodes/{model_name}/{node_id}",
+    summary="删除指定类型的节点及其关系",
+    status_code=200 # Or 204 No Content
+)
+async def delete_typed_node(
+    model_name: str = Path(..., description="节点模型的名称"),
+    node_id: str = Path(..., description="节点的唯一ID"),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    _m, _c, _u, label = _get_model_types(model_name)
+    try:
+        was_deleted = service.delete_node(label=label, node_id=node_id)
+        if not was_deleted:
+            raise HTTPException(status_code=404, detail=f"{label} node with ID '{node_id}' not found for deletion.")
+        return {"message": f"{label} node with ID '{node_id}' and its relationships deleted successfully."}
+    except Exception as e:
+        logger.error(f"Error deleting {label} node {node_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete {label} node: {str(e)}")
+
+
+# --- Relationship Operations ---
+@router.post(
+    "/relationships",
+    response_model=RelationshipData, # Or a more detailed response model if needed
+    summary="创建节点之间的关系",
+    status_code=201
+)
+async def create_relationship_api(
+    rel_data: RelationshipData = Body(...),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    """
+    在两个现有节点之间创建一条关系。
+    请求体应符合 `RelationshipData` 模式。
+    """
+    try:
+        # Validate labels from rel_data against known NODE_MODEL_MAP keys
+        if rel_data.start_node_label not in NODE_MODEL_MAP or \
+           rel_data.end_node_label not in NODE_MODEL_MAP:
+            invalid_labels = []
+            if rel_data.start_node_label not in NODE_MODEL_MAP: invalid_labels.append(rel_data.start_node_label)
+            if rel_data.end_node_label not in NODE_MODEL_MAP: invalid_labels.append(rel_data.end_node_label)
+            raise HTTPException(status_code=400, detail=f"Invalid node labels provided: {', '.join(invalid_labels)}. Supported labels are: {list(NODE_MODEL_MAP.keys())}")
+
+        created_rel = service.create_relationship(rel_data)
+        if created_rel is None:
+            # This could be due to nodes not found, or other DB issues.
+            raise HTTPException(status_code=404, detail="Failed to create relationship. Ensure start and end nodes exist.")
+        # The service returns a dict like {'id': ..., 'type': ..., 'start_node_id': ..., 'end_node_id': ..., 'properties': ...}
+        # We need to reconstruct RelationshipData or a similar response model.
+        # For now, let's adapt the response to fit RelationshipData or create a new response model.
+        # RelationshipData is for input. Let's define RelationshipResponse in graph_models.py
+        # For now, returning the dict from service. It includes the internal Neo4j rel ID.
+        return created_rel # This might not match RelationshipData exactly if it has internal ID.
+                           # Let's adjust the service to return something that can be parsed by RelationshipData
+                           # Or use a different response model.
+                           # The service currently returns a dict with 'id' (elementId), 'type', 'start_node_id', 'end_node_id', 'properties'.
+                           # RelationshipData expects: start_node_label, start_node_id, end_node_label, end_node_id, rel_type, properties
+                           # This is a mismatch.
+                           # Let's use the `RelationshipResponse` model if it's defined for this.
+                           # The service's create_relationship returns dict matching structure of RelationshipResponse.
+        return RelationshipResponse(**created_rel)
+
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error creating relationship: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create relationship: {str(e)}")
+
+@router.get(
+    "/nodes/{model_name}/{node_id}/relationships",
+    response_model=List[RelationshipResponse], # Using the generic RelationshipResponse
+    summary="获取特定节点的所有（或特定类型）的关系"
+)
+async def get_node_relationships_api(
+    model_name: str = Path(..., description="节点模型的名称"),
+    node_id: str = Path(..., description="节点的唯一ID"),
+    rel_type: Optional[str] = Query(None, description="要筛选的关系类型 (可选)"),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    _m, _c, _u, label = _get_model_types(model_name)
+    try:
+        relationships = service.get_relationships_of_node(node_label=label, node_id=node_id, rel_type=rel_type)
+        # The service returns a list of dicts, each should match RelationshipResponse structure.
+        return [RelationshipResponse(**rel) for rel in relationships]
+    except Exception as e:
+        logger.error(f"Error fetching relationships for node {label} {node_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch relationships: {str(e)}")
+
+
+# --- Custom Cypher Query ---
+class CypherQueryRequest(BaseModel):
+    query: str = Field(..., description="要执行的Cypher查询语句")
+    parameters: Optional[Dict[str, Any]] = Field(None, description="查询参数")
+
+@router.post("/query", summary="执行自定义只读Cypher查询")
+async def execute_read_query(
+    request_data: CypherQueryRequest = Body(...),
+    service: GraphDatabaseService = Depends(get_graph_service)
+) -> List[Dict[str, Any]]:
+    """
+    执行自定义的只读Cypher查询。
+    **注意**: 此端点主要用于数据检索。对于写操作，请使用 `/query/write`。
+    """
+    try:
+        # Basic safety: Disallow certain keywords common in write operations if this is strictly for reads
+        # This is a very naive check and not a substitute for proper permissions.
+        forbidden_keywords = ["CREATE ", "MERGE ", "SET ", "DELETE ", "REMOVE ", "CALL apoc.periodic", "CALL apoc.cypher.doIt"]
+        query_upper = request_data.query.upper()
+        for keyword in forbidden_keywords:
+            if keyword in query_upper:
+                raise HTTPException(status_code=403, detail=f"Write operation keyword '{keyword.strip()}' not allowed in read-only query endpoint.")
+
+        results = service.execute_custom_query(request_data.query, request_data.parameters)
+        return results
+    except HTTPException: # Re-raise
+        raise
+    except Exception as e:
+        logger.error(f"Error executing custom read query: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Custom query execution failed: {str(e)}")
+
+@router.post("/query/write", summary="执行自定义写Cypher查询")
+async def execute_write_query(
+    request_data: CypherQueryRequest = Body(...),
+    service: GraphDatabaseService = Depends(get_graph_service)
+) -> Dict[str, Any]:
+    """
+    执行自定义的写Cypher查询。
+    返回查询执行的摘要信息。
+    **警告**: 此接口具有直接修改数据库的能力，请谨慎使用。
+    """
+    try:
+        summary = service.execute_custom_write_query(request_data.query, request_data.parameters)
+        return summary
+    except Exception as e:
+        logger.error(f"Error executing custom write query: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Custom write query execution failed: {str(e)}")
+
+
+# --- Batch Data Import ---
+class BatchImportNodeSchema(BaseModel):
+    label: str = Field(..., description="节点的标签")
+    properties: Dict[str, Any] = Field(..., description="节点的属性字典, 必须包含 'id'")
+
+class BatchImportRelationshipSchema(BaseModel):
+    start_node_label: str
+    start_node_id: str
+    end_node_label: str
+    end_node_id: str
+    rel_type: str
+    properties: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class BatchImportRequest(BaseModel):
+    nodes: Optional[List[BatchImportNodeSchema]] = Field(default_factory=list, description="要导入的节点列表")
+    relationships: Optional[List[BatchImportRelationshipSchema]] = Field(default_factory=list, description="要导入的关系列表")
+
+@router.post("/import", summary="批量导入预处理的节点和关系数据")
+async def batch_import_data_api(
+    import_data: BatchImportRequest = Body(...),
+    service: GraphDatabaseService = Depends(get_graph_service)
+) -> Dict[str, Any]:
+    """
+    批量导入节点和关系数据。
+    - `nodes`: 包含 `label` 和 `properties` (其中应有 `id`) 的对象列表。
+    - `relationships`: 包含 `start_node_label`, `start_node_id`, `end_node_label`, `end_node_id`, `rel_type`, `properties` 的对象列表。
+    """
+    try:
+        # Convert Pydantic models to simple dicts for the service if it expects that
+        # The service's batch_import_data expects dicts.
+        nodes_list = [node.dict() for node in import_data.nodes] # Pydantic V1
+        rels_list = [rel.dict() for rel in import_data.relationships] # Pydantic V1
+
+        # Validate node labels
+        for node_spec in nodes_list:
+            if node_spec["label"] not in NODE_MODEL_MAP:
+                raise HTTPException(status_code=400, detail=f"Invalid node label '{node_spec['label']}' in batch import.")
+            if "id" not in node_spec["properties"]:
+                 # Service layer will add if missing, but good to enforce for preprocessed data
+                logger.warning(f"Node {node_spec['properties'].get('name', '')} in batch import missing 'id'. Will be generated.")
+
+
+        # Validate relationship node labels
+        for rel_spec in rels_list:
+            if rel_spec["start_node_label"] not in NODE_MODEL_MAP or \
+               rel_spec["end_node_label"] not in NODE_MODEL_MAP:
+                raise HTTPException(status_code=400, detail=f"Invalid node label in relationship specification during batch import.")
+
+        data_for_service = {"nodes": nodes_list, "relationships": rels_list}
+
+        results = service.batch_import_data(data_for_service)
+        if results.get("errors"):
+            # Partial success or full failure with errors
+            # Consider returning 207 Multi-Status or 400/500 based on error severity
+            logger.error(f"Batch import completed with errors: {results['errors']}")
+            # Return 207 (Multi-Status) might be appropriate if some succeeded
+            # For simplicity, if any error, return 500 for now.
+            # Or, can return 200 with error details in response.
+            # Let's return 200 but include errors in the response.
+            return {
+                "message": "Batch import process finished with errors.",
+                "nodes_processed": results.get("nodes_created", 0), # Service returns 'nodes_created'
+                "relationships_processed": results.get("relationships_created", 0),
+                "errors": results.get("errors")
+            }
+
+        return {
+            "message": "Batch import successful.",
+            "nodes_created": results.get("nodes_created", 0),
+            "relationships_created": results.get("relationships_created", 0)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during batch import: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch import failed: {str(e)}")
+
+# TODO: Add specific complex query endpoints from Step 4 if they are meant to be exposed directly.
+# For example:
+# GET /api/graph/bridges/{bridge_id}/components
+# GET /api/graph/components/by-material/{material_id}
+# etc.
+# These would call the corresponding methods in GraphDatabaseService.
+# For now, the generic /query endpoint can serve for some of these if the client forms the Cypher.
+
+# Example for a specific complex query endpoint:
+@router.get(
+    "/bridges/{bridge_id}/components",
+    response_model=List[ComponentModel],
+    summary="获取特定桥梁的所有构件"
+)
+async def get_bridge_components_api(
+    bridge_id: str = Path(..., description="桥梁的ID"),
+    service: GraphDatabaseService = Depends(get_graph_service)
+):
+    try:
+        components_props = service.get_components_of_bridge(bridge_id)
+        if not components_props and not service.get_node_by_id("Bridge", bridge_id): # Check if bridge exists
+             raise HTTPException(status_code=404, detail=f"Bridge with ID '{bridge_id}' not found.")
+        return [ComponentModel(**props) for props in components_props]
+    except Exception as e:
+        logger.error(f"Error fetching components for bridge {bridge_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch components: {str(e)}")
+
+# Add this router to the main app in main.py:
+# from backend.app.api.endpoints import graph_api
+# app.include_router(graph_api.router, prefix=f"{settings.API_PREFIX}/graph", tags=["Graph"])
