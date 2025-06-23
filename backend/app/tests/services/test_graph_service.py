@@ -3,13 +3,13 @@ import pytest
 from neo4j import Driver
 import uuid
 
-from backend.app.services.graph_service import GraphDatabaseService, get_graph_service
-from backend.app.db.neo4j_driver import get_neo4j_driver, close_neo4j_driver
-from backend.app.models.graph_models import (
+from ...services.graph_service import GraphDatabaseService, get_graph_service
+from ...db.neo4j_driver import get_neo4j_driver, close_neo4j_driver
+from ...models.graph_models import (
     BridgeModel, ComponentModel, MaterialModel, StandardModel,
     RelationshipData
 )
-from backend.app.core.config import settings
+from ...core.config import settings
 
 # 全局测试数据
 TEST_BRIDGE_ID = f"test-bridge-{uuid.uuid4()}"

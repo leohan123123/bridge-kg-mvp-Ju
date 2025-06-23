@@ -2,7 +2,7 @@ import httpx # Changed from requests to httpx for async
 import json
 from typing import Optional, Dict, Any
 
-from backend.app.core.config import settings # Assuming settings will hold OLLAMA_API_URL
+from ..core.config import settings # Assuming settings will hold OLLAMA_API_URL
 
 # Default Ollama API URL if not specified in settings
 DEFAULT_OLLAMA_API_URL = "http://localhost:11434/api/chat"

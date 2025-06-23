@@ -4,8 +4,8 @@ from typing import Dict, Any, Optional
 import shutil # 用于文件操作
 from pathlib import Path
 
-from backend.app.services.dxf_parser import DXFParserService
-from backend.app.models.bridge_component import BridgeComponent # 虽然API直接返回dict，但类型提示可能有用
+from ...services.dxf_parser import DXFParserService
+from ...models.bridge_component import BridgeComponent # 虽然API直接返回dict，但类型提示可能有用
 
 router = APIRouter()
 

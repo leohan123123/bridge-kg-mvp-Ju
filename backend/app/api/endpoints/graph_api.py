@@ -4,14 +4,14 @@ from typing import List, Dict, Any, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Body, Path, Query
 
-from backend.app.models.graph_models import (
+from ...models.graph_models import (
     NodeModel, # Base for type hinting
     BridgeModel, ComponentModel, MaterialModel, StandardModel,
     BridgeCreateSchema, ComponentCreateSchema, MaterialCreateSchema, StandardCreateSchema,
     BridgeUpdateSchema, ComponentUpdateSchema, MaterialUpdateSchema, StandardUpdateSchema,
     RelationshipData, NodeResponse, RelationshipResponse
 )
-from backend.app.services.graph_service import GraphDatabaseService, get_graph_service
+from ...services.graph_service import GraphDatabaseService, get_graph_service
 from neo4j import Driver
 # It's better to get the service via DI rather than driver directly in endpoint
 # from backend.app.db.neo4j_driver import get_db_session # For direct session use if needed

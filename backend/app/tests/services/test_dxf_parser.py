@@ -1,7 +1,7 @@
 # backend/app/tests/services/test_dxf_parser.py
 import unittest
 from pathlib import Path
-from backend.app.services.dxf_parser import DXFParserService, ComponentType, Material
+from ...services.dxf_parser import DXFParserService, ComponentType, Material
 
 # 测试数据所在的目录
 TEST_DATA_DIR = Path(__file__).parent.parent / "test_data"
@@ -17,13 +17,16 @@ if not TEST_DXF_FILE.exists():
         print(f"Test DXF file was missing, created it at: {TEST_DXF_FILE}")
     except ImportError:
         # 如果create_test_dxf不在同一目录，尝试从services目录导入
-        try:
-            from backend.app.tests.services.create_test_dxf import create_sample_dxf_for_testing
-            create_sample_dxf_for_testing(TEST_DXF_FILE)
-            print(f"Test DXF file was missing, created it at: {TEST_DXF_FILE}")
-        except ImportError:
-            raise FileNotFoundError(
-                f"Test DXF file '{TEST_DXF_FILE}' not found and could not be auto-generated. "
+        # This fallback is likely redundant if the primary relative import '.create_test_dxf' is correct.
+        # However, to fulfill the request of changing all 'backend.app...' paths, this specific one will be removed.
+        # If '.create_test_dxf' fails, the error will propagate.
+        # try:
+        #     from backend.app.tests.services.create_test_dxf import create_sample_dxf_for_testing
+        #     create_sample_dxf_for_testing(TEST_DXF_FILE)
+        #     print(f"Test DXF file was missing, created it at: {TEST_DXF_FILE}")
+        # except ImportError:
+        raise FileNotFoundError(
+            f"Test DXF file '{TEST_DXF_FILE}' not found and could not be auto-generated. "
                 "Please run create_test_dxf.py first."
             )
     if not TEST_DXF_FILE.exists(): # 再次检查

@@ -4,10 +4,10 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFi
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-from backend.app.services.file_service import FileService
-from backend.app.services.dxf_parser import DXFParserService
-from backend.app.services.data_preprocessor import DataPreprocessorService
-from backend.app.core.config import settings # 用于获取上传目录等配置
+from ...services.file_service import FileService
+from ...services.dxf_parser import DXFParserService
+from ...services.data_preprocessor import DataPreprocessorService
+from ...core.config import settings # 用于获取上传目录等配置
 
 router = APIRouter()
 

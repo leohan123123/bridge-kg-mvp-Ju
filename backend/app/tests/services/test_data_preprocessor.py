@@ -3,7 +3,7 @@ import pytest
 import copy # For deep copying mock data
 from pathlib import Path
 
-from backend.app.services.data_preprocessor import DataPreprocessorService
+from ...services.data_preprocessor import DataPreprocessorService
 # from backend.app.models.bridge_component import ComponentType # 如果需要比较枚举
 
 # --- Mock Data Fixtures ---
