@@ -1,7 +1,7 @@
 # backend/app/tests/services/test_dxf_parser.py
 import unittest
 from pathlib import Path
-from ...services.dxf_parser import DXFParserService, ComponentType, Material
+from ..services.dxf_parser import DXFParserService, ComponentType, Material
 
 # 测试数据所在的目录
 TEST_DATA_DIR = Path(__file__).parent.parent / "test_data"

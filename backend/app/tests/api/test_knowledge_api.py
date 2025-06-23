@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
-from ...main import app # 确保从正确的位置导入 app
-from ...core.config import settings
+from ..main import app # 确保从正确的位置导入 app
+from ..core.config import settings
 
 client = TestClient(app)
 

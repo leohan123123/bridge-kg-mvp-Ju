@@ -6,9 +6,9 @@ import uuid
 
 # Assuming your FastAPI app instance is accessible for testing
 # If main.py defines `app`, and tests are run from project root, this might work:
-from ...main import app  # Main FastAPI app instance
-from ...core.config import settings
-from ...services.graph_service import GraphDatabaseService, get_graph_service
+from ..main import app  # Main FastAPI app instance
+from ..core.config import settings
+from ..services.graph_service import GraphDatabaseService, get_graph_service
 
 # Test data IDs
 API_TEST_BRIDGE_ID = f"api-test-bridge-{uuid.uuid4()}"
@@ -99,7 +99,7 @@ async def test_api_get_all_bridges(async_client: AsyncClient):
 
     # Use the service to create directly to simplify test setup for GET all
     service = get_graph_service()
-    from ...models.graph_models import BridgeModel
+    from ..models.graph_models import BridgeModel
     service.create_node("Bridge", BridgeModel(id=temp_bridge_id, name="Bridge for GET ALL test"))
 
     response = await async_client.get("/graph/nodes/Bridge?limit=5")
@@ -120,7 +120,7 @@ async def test_api_update_bridge(async_client: AsyncClient):
     cleanup_test_node_via_service("Bridge", bridge_to_update_id)
 
     service = get_graph_service()
-    from ...models.graph_models import BridgeModel, BridgeCreateSchema
+    from ..models.graph_models import BridgeModel, BridgeCreateSchema
     # Create using schema, then construct full model for service
     create_schema = BridgeCreateSchema(name="Bridge to Update Original", location="Original Location")
     full_model = BridgeModel(**create_schema.dict(), id=bridge_to_update_id) # Pydantic V1
@@ -151,7 +151,7 @@ async def test_api_delete_bridge(async_client: AsyncClient):
     cleanup_test_node_via_service("Bridge", bridge_to_delete_id)
 
     service = get_graph_service()
-    from ...models.graph_models import BridgeModel, BridgeCreateSchema
+    from ..models.graph_models import BridgeModel, BridgeCreateSchema
     create_schema = BridgeCreateSchema(name="Bridge to Delete")
     full_model = BridgeModel(**create_schema.dict(), id=bridge_to_delete_id)
     service.create_node("Bridge", full_model)
@@ -181,7 +181,7 @@ async def test_api_create_relationship(async_client: AsyncClient):
     cleanup_test_node_via_service("Component", c_id_rel)
 
     service = get_graph_service()
-    from ...models.graph_models import BridgeModel, ComponentModel
+    from ..models.graph_models import BridgeModel, ComponentModel
     service.create_node("Bridge", BridgeModel(id=b_id_rel, name="Rel Test Bridge"))
     service.create_node("Component", ComponentModel(id=c_id_rel, name="Rel Test Component"))
 
@@ -262,7 +262,7 @@ async def test_api_custom_read_query(async_client: AsyncClient):
     mat_id_query = f"api-query-mat-{uuid.uuid4()}"
     cleanup_test_node_via_service("Material", mat_id_query)
     service = get_graph_service()
-    from ...models.graph_models import MaterialModel
+    from ..models.graph_models import MaterialModel
     service.create_node("Material", MaterialModel(id=mat_id_query, name="Query Test Material", material_type="Steel"))
 
     query_payload = {
@@ -320,7 +320,7 @@ async def test_api_get_bridge_components(async_client: AsyncClient):
     cleanup_test_node_via_service("Component", c2_id_complex)
 
     service = get_graph_service()
-    from ...models.graph_models import BridgeModel, ComponentModel, RelationshipData
+    from ..models.graph_models import BridgeModel, ComponentModel, RelationshipData
     service.create_node("Bridge", BridgeModel(id=b_id_complex, name="Complex Query Bridge"))
     service.create_node("Component", ComponentModel(id=c1_id_complex, name="Complex Comp 1"))
     service.create_node("Component", ComponentModel(id=c2_id_complex, name="Complex Comp 2"))
