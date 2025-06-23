@@ -3,11 +3,11 @@ import logging
 from typing import List, Dict, Any, Optional
 from neo4j import Driver, Session, Transaction, Record
 from neo4j.exceptions import Neo4jError # Corrected import for Neo4jError
-from backend.app.models.graph_models import (
+from ..models.graph_models import (
     NodeModel, BridgeModel, ComponentModel, MaterialModel, StandardModel,
     RelationshipData, NodeResponse # Assuming NodeResponse might be useful
 )
-from backend.app.core.config import settings
+from ..core.config import settings
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -807,7 +807,7 @@ def get_graph_service() -> GraphDatabaseService:
     # by setting _graph_db_service_instance to None before calling.
     if _graph_db_service_instance is None:
         # Import here to avoid circular dependencies if models are imported at top level by neo4j_driver
-        from backend.app.db.neo4j_driver import get_neo4j_driver
+        from ..db.neo4j_driver import get_neo4j_driver
         try:
             actual_driver = get_neo4j_driver()
         except ConnectionError as e:

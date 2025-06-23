@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from backend.app.services.graph_service import GraphDatabaseService, get_graph_service
-from backend.app.models.graph_models import NodeModel, BridgeModel, ComponentModel, MaterialModel # Assuming these are defined
+from ...services.graph_service import GraphDatabaseService, get_graph_service
+from ...models.graph_models import NodeModel, BridgeModel, ComponentModel, MaterialModel # Assuming these are defined
 import uuid
 
 router = APIRouter()
