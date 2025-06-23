@@ -57,7 +57,10 @@
 ## 当前开发状态
 **MVP功能：** ✅ 核心功能已完成  
 **部署测试：** 🔧 Windows环境验证中  
-**技术难点：** Docker容器Python模块路径、Windows编码兼容性
+**当前阻塞：** Docker容器内ModuleNotFoundError (Jules修复中)
+**技术栈验证：** Docker✅ Neo4j✅ Python✅ FastAPI🔧 React⏳
+
+**工作模式：** Jules AI开发 + GitHub协作 + 本地Windows测试
 
 ## 下一阶段选择
 **当前状态：** 🎯 智能桥梁设计助手MVP基本完成！
@@ -76,6 +79,12 @@
 - [ ] 任务6-5：后端服务完全启动
 - [ ] 任务6-6：前端服务集成测试
 - [ ] 任务6-7：端到端功能验证
+
+**技术问题记录：**
+- Pydantic V1→V2迁移：BaseSettings移至pydantic-settings包
+- requirements.txt编码：Windows GBK vs UTF-8冲突
+- Docker导入路径：容器内绝对路径 vs 相对路径问题
+- 工作流确立：Jules开发→GitHub→本地测试模式
 
 ### ⏳ 阶段七：3D可视化系统
 - [ ] 任务7-1：Three.js 3D渲染引擎
