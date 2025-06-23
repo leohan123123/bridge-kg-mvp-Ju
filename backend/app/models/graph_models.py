@@ -173,8 +173,9 @@ class NodeResponse(BaseModel):
     labels: List[str]
     properties: Dict[str, Any]
 
-    class Config:
-        orm_mode = True # 兼容从Neo4j Record对象转换
+    model_config = {
+        "from_attributes": True  # Pydantic V2 equivalent of orm_mode = True
+    }
 
 # 用于从数据库返回关系数据的通用模型
 class RelationshipResponse(BaseModel):
@@ -359,8 +360,8 @@ class BridgeModel(NodeModel):
     span_count: Optional[int] = Field(None, description="桥梁的跨数")
     additional_props: Dict[str, Any] = Field(default_factory=dict, description="其他自定义属性")
 
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example_input": { # Example for creation (id might be omitted)
                 "name": "金门大桥",
                 "location": "旧金山",
@@ -379,6 +380,7 @@ class BridgeModel(NodeModel):
                 "additional_props": {"main_span_meters": 1280}
             }
         }
+    }
 
 class ComponentModel(NodeModel):
     name: str = Field(..., description="构件的名称")

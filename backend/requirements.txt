@@ -1,18 +1,44 @@
-fastapi>=0.70.0,<0.110.0 # 固定一个合适的范围，避免不兼容的更新
-uvicorn[standard]>=0.15.0,<0.28.0 # standard包含了cython加速的依赖
-pydantic>=1.9.0,<2.0.0 # Pydantic V2 有较大变动，先固定在V1
-python-dotenv>=0.19.0,<1.1.0 # 用于加载 .env 文件
-neo4j>=4.4.0,<6.0.0 # Neo4j Python 驱动，放宽到<6以获取更多更新
-ezdxf>=1.0.0,<1.5.0 # 添加 ezdxf
-PyMuPDF>=1.23.0,<1.24.0 # 添加 PyMuPDF (fitz)
-rich>=13.0.0,<15.0.0 # 用于美化命令行输出和日志
+# Backend Application Dependencies
 
-# gunicorn # 如果在生产环境使用 Gunicorn，取消注释
+# Core Web Framework and ASGI Server
+fastapi==0.111.0
+uvicorn==0.29.0
+python-multipart==0.0.9 # For FastAPI file uploads (form data)
+watchfiles==0.21.0      # For uvicorn --reload functionality
+httptools==0.6.1        # Optional high-performance HTTP parser for Uvicorn
+websockets==12.0        # For WebSocket support in Uvicorn/FastAPI if needed
 
-# 开发和测试依赖
-pytest>=7.0.0,<8.0.0
-black>=23.0.0,<24.0.0
-flake8>=6.0.0,<7.0.0
-httpx>=0.25.0,<0.27.0 # 用于测试 FastAPI 应用，建议添加
-python-multipart
-pytest-asyncio
+# Data Validation and Settings Management (Pydantic V2)
+pydantic==2.7.1
+pydantic-settings==2.2.1
+pydantic-core==2.18.2   # Core of Pydantic, usually pinned by Pydantic itself
+
+# Database Driver
+neo4j==5.20.0           # Neo4j Python Driver
+
+# File Processing
+# For DXF file manipulation.
+# On Windows, ensure the latest Microsoft Visual C++ Redistributable is installed
+# to avoid potential DLL load issues with ezdxf or its (optional) dependencies.
+ezdxf==1.4.2
+
+# HTTP Client
+httpx==0.27.0           # Asynchronous HTTP client
+httpcore==1.0.5         # Core HTTP library for httpx
+
+# Console Output Enhancement
+rich==13.7.1
+
+# Environment Variable Management
+python-dotenv==1.0.1
+
+# Typing Support & Async Utilities
+typing-extensions==4.11.0
+starlette==0.37.2       # Core toolkit for FastAPI
+anyio==4.3.0            # Asynchronous networking and concurrency library
+sniffio==1.3.1          # Dependency for anyio/httpx
+exceptiongroup==1.2.1   # Dependency for anyio on older Python versions (e.g., <3.11)
+idna==3.7               # Internationalized Domain Names in Applications (dependency for httpcore/httpx)
+
+# Optional: For Pydantic email validation, if EmailStr is used.
+# email-validator==2.1.1 # If uncommented, use '==' for precise versioning.
