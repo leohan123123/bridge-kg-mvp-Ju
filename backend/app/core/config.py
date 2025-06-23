@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # 日志级别
     LOG_LEVEL: str = "INFO"
 
+    # Ollama Configuration
+    OLLAMA_API_URL: AnyHttpUrl = "http://localhost:11434/api/chat" # Default Ollama API URL
+    OLLAMA_DEFAULT_MODEL: str = "qwen2:0.5b" # Default model to use if not specified in request
+
     class Config:
         case_sensitive = True # 环境变量名大小写敏感
         env_file = ".env" # 指定 .env 文件名 (虽然我们已经手动加载了)
