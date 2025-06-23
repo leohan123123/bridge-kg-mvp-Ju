@@ -34,16 +34,9 @@ class FileMetadataResponse(FileMetadataBase):
     uploaded_at: datetime = Field(..., description="文件上传时间")
     file_url: Optional[str] = Field(None, description="文件的可访问URL (如果适用)")
 
-    class Config:
-        orm_mode = True # Pydantic V1
-        # from_attributes = True # Pydantic V2 (如果使用)
-        # 兼容 Pydantic V1 和 V2 的 orm_mode/from_attributes
-        @classmethod
-        def from_orm(cls, obj):
-            # Pydantic V2 uses from_attributes=True, V1 uses orm_mode=True
-            # This method ensures compatibility if switching or if orm_mode is not automatically handled
-            # For basic cases, orm_mode=True might be enough for Pydantic V1
-            return super().from_orm(obj)
+    model_config = {
+        "from_attributes": True  # Pydantic V2 equivalent of orm_mode = True
+    }
 
 
 class PaginatedFileMetadataResponse(BaseModel):

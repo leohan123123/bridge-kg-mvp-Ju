@@ -1,16 +1,22 @@
 import os
-from pydantic import BaseSettings, AnyHttpUrl # AnyHttpUrl 用于验证URL格式
+from pydantic import AnyHttpUrl # AnyHttpUrl 用于验证URL格式
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Union
-from dotenv import load_dotenv
+# python-dotenv is usually automatically handled by pydantic-settings if installed
+# from dotenv import load_dotenv
 
-# 加载 .env 文件中的环境变量 (如果存在)
-# 这使得我们可以在开发环境中使用 .env 文件，而在生产环境中通过系统环境变量配置
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-if os.path.exists(env_path):
-    load_dotenv(dotenv_path=env_path)
-    print(f"Loaded .env file from: {env_path}")
-else:
-    print(f".env file not found at: {env_path}, using system environment variables.")
+# pydantic-settings will automatically load from .env files by default.
+# The manual loading below is generally not needed with pydantic-settings.
+# However, explicit loading can be kept if specific paths or behaviors are desired
+# beyond pydantic-settings' defaults. For now, we can rely on pydantic-settings'
+# built-in .env file handling.
+
+# env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+# if os.path.exists(env_path):
+#     load_dotenv(dotenv_path=env_path)
+#     print(f"Loaded .env file from: {env_path}")
+# else:
+#     print(f".env file not found at: {env_path}, using system environment variables.")
 
 
 class Settings(BaseSettings):
@@ -37,22 +43,18 @@ class Settings(BaseSettings):
     OLLAMA_API_URL: AnyHttpUrl = "http://localhost:11434/api/chat" # Default Ollama API URL
     OLLAMA_DEFAULT_MODEL: str = "qwen2:0.5b" # Default model to use if not specified in request
 
-    class Config:
-        case_sensitive = True # 环境变量名大小写敏感
-        env_file = ".env" # 指定 .env 文件名 (虽然我们已经手动加载了)
-        env_file_encoding = 'utf-8'
+    # Pydantic-Settings configuration
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_file=".env", # Specifies the .env file name for pydantic-settings to load
+        env_file_encoding='utf-8',
+        extra='ignore' # Ignores extra fields from .env rather than raising an error
+    )
 
-        # Pydantic V2 的配置方式
-        # @classmethod
-        # def parse_env_var(cls, field_name: str, raw_val: str) -> Any:
-        #     if field_name == 'ALLOWED_ORIGINS':
-        #         if raw_val.startswith('[') and raw_val.endswith(']'):
-        #             try:
-        #                 return json.loads(raw_val)
-        #             except json.JSONDecodeError:
-        #                 pass # Fallback to comma-separated string
-        #         return [origin.strip() for origin in raw_val.split(',') if origin.strip()]
-        #     return cls.json_loads(raw_val) if isinstance(raw_val, str) else raw_val
+    # The commented-out Pydantic V2 configuration for parse_env_var is generally
+    # not needed for simple cases as Pydantic V2 and pydantic-settings have improved
+    # parsing for list types from environment variables.
+    # If complex parsing is needed, @field_validator can be used.
 
 
 settings = Settings()
@@ -60,7 +62,8 @@ settings = Settings()
 # 打印加载的配置 (用于调试，生产环境可以移除)
 if settings.DEBUG:
     print("Loaded application settings:")
-    for key, value in settings.dict().items():
+    # Use model_dump() in Pydantic V2
+    for key, value in settings.model_dump().items():
         # 避免打印敏感信息如密码
         if "password" in key.lower() or "secret" in key.lower():
             print(f"  {key}: ******")
