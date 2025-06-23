@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
-from ...services.ai_service import get_ollama_chat_response, OllamaError
-from ...core.config import settings # For default model if specified
+from ....services.ai_service import get_ollama_chat_response, OllamaError
+from ....core.config import settings # For default model if specified
 
 router = APIRouter()
 
