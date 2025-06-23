@@ -3,7 +3,7 @@ import ezdxf
 from ezdxf.document import Drawing
 from ezdxf.entitydb import EntityDB
 from ezdxf.layouts import Modelspace
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple as TypingTuple, Union # Ensured Union is here
 from pathlib import Path
 
 # 导入rich用于调试时美化输出 (可选)
@@ -18,7 +18,7 @@ class DXFParserService:
     负责从DXF文件中提取桥梁结构信息。
     """
 
-    def __init__(self, file_path: str | Path):
+    def __init__(self, file_path: Union[str, Path]):
         """
         初始化解析服务。
 
@@ -76,7 +76,7 @@ import ezdxf
 from ezdxf.document import Drawing
 from ezdxf.entitydb import EntityDB
 from ezdxf.layouts import Modelspace
-from typing import Optional, Dict, Any, List, Tuple as TypingTuple
+from typing import Optional, Dict, Any, List, Tuple as TypingTuple, Union
 
 from pathlib import Path
 import math # 用于计算几何属性
@@ -86,7 +86,7 @@ from rich.console import Console
 from rich.table import Table
 
 # 导入数据模型
-from backend.app.models.bridge_component import BridgeComponent, ComponentType, Material, GeometryInfo
+from app.models.bridge_component import BridgeComponent, ComponentType, Material, GeometryInfo
 
 console = Console()
 
@@ -121,7 +121,7 @@ class DXFParserService:
     负责从DXF文件中提取桥梁结构信息。
     """
 
-    def __init__(self, file_path: str | Path):
+    def __init__(self, file_path: Union[str, Path]): # This is the second one
         """
         初始化解析服务。
 

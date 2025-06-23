@@ -24,7 +24,10 @@ WORKDIR /app
 
 # 从构建阶段复制已安装的依赖
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
-COPY --from=builder /app/requirements.txt . # 复制 requirements.txt 供参考或后续操作
+# Also copy executables installed by pip
+COPY --from=builder /usr/local/bin /usr/local/bin
+# 复制 requirements.txt 供参考或后续操作
+COPY --from=builder /app/requirements.txt .
 
 # 复制应用代码
 # 注意：如果 builder 阶段已经复制了 app，这里可能需要调整
