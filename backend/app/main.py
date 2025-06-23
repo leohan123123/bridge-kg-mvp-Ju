@@ -49,10 +49,10 @@ async def startup_event():
         get_neo4j_driver() # 初始化Neo4j驱动并验证连接
         logger.info("Neo4j驱动已成功初始化。")
     except ConnectionError as e:
-        logger.error(f"应用启动失败：无法连接到Neo4j。错误: {e}")
-        # 根据应用的容错需求，这里可以选择退出应用或标记为不健康状态
-        # 例如: raise RuntimeError(f"Failed to connect to Neo4j: {e}")
-        # 对于当前设置，如果get_neo4j_driver抛出ConnectionError, FastAPI可能不会完全启动或会记录错误。
+        logger.error(f"应用启动时无法连接到Neo4j（错误将被忽略，应用将继续启动）: {e}") # 修改日志信息
+        # 不再重新抛出异常或让应用在此处失败
+    except Exception as e: # 可以捕获更广泛的异常，以防其他问题
+        logger.error(f"应用启动时发生未知错误（将被忽略）: {e}")
 
 # 应用关闭事件处理器
 @app.on_event("shutdown")
