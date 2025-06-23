@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field # Field 用于给模型字段添加额外信息
+from typing import Optional
 import logging
 import os
 
@@ -91,9 +92,9 @@ async def read_root() -> dict[str, str]:
 # 示例：一个带Pydantic模型的POST请求
 class Item(BaseModel):
     name: str
-    description: str | None = Field(None, title="描述信息", max_length=300)
+    description: Optional[str] = Field(None, title="描述信息", max_length=300)
     price: float = Field(..., gt=0, description="价格必须大于0")
-    tax: float | None = None
+    tax: Optional[float] = None
 
 @app.post(f"{settings.API_PREFIX}/items/", response_model=Item, tags=["Items"])
 async def create_item(item: Item) -> Item:
