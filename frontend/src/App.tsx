@@ -3,6 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Layout, Menu, Spin, Typography, theme } from 'antd'; // Spin 用于加载指示
 import './App.css'; // App特定样式
 
+// 引入 AI 聊天组件
+import AIChatInterface from './components/AIChatInterface'; // 直接导入，非懒加载
+
 const { Header, Content, Footer, Sider } = Layout;
 const { Title } = Typography;
 
@@ -20,8 +23,9 @@ const App: React.FC = () => {
   // 导航菜单项
   const menuItems = [
     { key: '1', label: <Link to="/">首页</Link> },
-    { key: '2', label: <Link to="/knowledge-query">知识查询</Link> }, // 修改/新增菜单项
-    { key: '3', label: <Link to="/about">关于</Link> },
+    { key: '2', label: <Link to="/knowledge-query">知识查询</Link> },
+    { key: '3', label: <Link to="/ai-assistant">AI 助手</Link> }, // 新增 AI 助手菜单项
+    { key: '4', label: <Link to="/about">关于</Link> },
     // 添加更多导航项
   ];
 
@@ -46,18 +50,21 @@ const App: React.FC = () => {
           <Content style={{ margin: '24px 16px 0', overflow: 'initial' }}>
             <div
               style={{
-                padding: 24,
+                // padding: 24, // AIChatInterface 将管理自己的内边距
                 textAlign: 'center',
                 background: colorBgContainer,
                 borderRadius: borderRadiusLG,
-                minHeight: 'calc(100vh - 180px)' // 估算高度，可调整
+                minHeight: 'calc(100vh - 180px)', // 估算高度，可调整
+                display: 'flex', // 确保 AIChatInterface 可以撑满高度
+                flexDirection: 'column' // 确保 AIChatInterface 可以撑满高度
               }}
             >
               <Suspense fallback={<Spin size="large" tip="页面加载中..." style={{marginTop: '50px'}} />}>
                 <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />
-                  <Route path="/knowledge-query" element={<KnowledgeQueryPage />} /> {/* 新增路由 */}
+                  <Route path="/knowledge-query" element={<KnowledgeQueryPage />} />
+                  <Route path="/ai-assistant" element={<AIChatInterface />} /> {/* 新增 AI 助手路由 */}
                   {/* 404 Not Found 路由应该放在最后 */}
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
