@@ -12,12 +12,14 @@ class AIChatRequest(BaseModel):
     message: str = Field(..., description="The user's message to the AI.")
     context: Optional[str] = Field(None, description="Optional context to provide to the AI.")
     model: Optional[str] = Field(None, description="Optional Ollama model to use (e.g., 'qwen2.5:7b'). Uses system default if not provided.")
+    knowledge_enhanced: Optional[bool] = Field(False, description="Whether to enhance the response with knowledge graph data.")
     # stream: bool = Field(False, description="Whether to stream the response.") # Streaming not implemented yet
 
 class AIChatResponse(BaseModel):
     role: str = Field(description="The role of the responder (e.g., 'assistant').")
     content: str = Field(description="The AI's response content.")
     model_used: str = Field(description="The Ollama model that generated the response.")
+    data_source: Optional[str] = Field(None, description="Indicates the source of data if knowledge graph was used (e.g., 'Knowledge Graph').")
     # additional_info: Optional[Dict[str, Any]] = Field(None, description="Additional information from the Ollama response if any.")
 
 
@@ -28,25 +30,19 @@ async def handle_ai_chat(
     """
     Receives a user message and optional context, communicates with the
     Ollama service, and returns the AI's response.
+    Optionally enhances the response with data from the knowledge graph.
     """
     try:
-        selected_model = request.model or getattr(settings, 'OLLAMA_DEFAULT_MODEL', "qwen2:0.5b") # Fallback if not in settings
+        selected_model = request.model or getattr(settings, 'OLLAMA_DEFAULT_MODEL', "qwen2:0.5b")
+        data_source_used = None
 
+        # Call the AI service, passing the knowledge_enhanced flag
         ollama_response = await get_ollama_chat_response(
             message=request.message,
             context=request.context,
-            model=selected_model
+            model=selected_model,
+            knowledge_enhanced=request.knowledge_enhanced
         )
-
-        # Extract the relevant part of the response
-        # Based on current ai_service.py, response is like:
-        # {
-        #   "model": "qwen2:0.5b",
-        #   "created_at": "...",
-        #   "message": { "role": "assistant", "content": "..." },
-        #   "done": true,
-        #   ... (other stats)
-        # }
 
         if not ollama_response or "message" not in ollama_response:
             raise HTTPException(status_code=500, detail="Invalid response structure from AI service.")
@@ -56,12 +52,18 @@ async def handle_ai_chat(
         response_role = ai_message.get("role", "assistant")
         model_used = ollama_response.get("model", selected_model)
 
+        # Determine data_source based on the flag from ai_service
+        if ollama_response.get("kg_context_used", False):
+            data_source_used = "Knowledge Graph"
+            # Optionally, add more detail to the content if KG was used.
+            # For example: response_content += "\n\n(Information supplemented by the Knowledge Graph)"
+            # This is a design choice. For now, just setting the data_source field.
 
         return AIChatResponse(
             role=response_role,
             content=response_content,
-            model_used=model_used
-            # additional_info={k: v for k, v in ollama_response.items() if k not in ["message", "model"]}
+            model_used=model_used,
+            data_source=data_source_used
         )
 
     except OllamaError as e:
