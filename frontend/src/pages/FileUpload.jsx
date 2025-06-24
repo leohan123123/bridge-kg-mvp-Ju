@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
-import { Upload, message, Button, List, Typography, Progress, Space, Alert, Modal } from 'antd';
-import { InboxOutlined, FileTextOutlined, UploadOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Upload, message, Button, List, Typography, Progress, Space, Alert, Modal, Tag, Divider } from 'antd';
+import { InboxOutlined, FileTextOutlined, UploadOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ExperimentOutlined } from '@ant-design/icons';
 import axios from '../utils/axios'; // Assuming axios is configured for backend calls
 
 const { Dragger } = Upload;
-const { Text, Link, Paragraph } = Typography; // Added Paragraph
+const { Text, Link, Paragraph, Title } = Typography; // Added Paragraph and Title
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_FILE_TYPES = ['.dxf', '.pdf', '.ifc'];
 const UPLOAD_URL = '/v1/files/upload'; // Backend endpoint
 const PDF_EXTRACT_URL = '/v1/pdf/extract'; // PDF Text Extraction endpoint
+const ENTITY_EXTRACT_URL = '/v1/entities/extract'; // Entity Extraction endpoint
+
+// Define colors for entity types
+const ENTITY_TYPE_COLORS = {
+  "桥梁类型": "magenta",
+  "材料": "blue",
+  "结构": "green",
+  "规范": "purple",
+  // Add more colors if new types are introduced
+};
 
 const FileUpload = () => {
   const [fileList, setFileList] = useState([]);
@@ -20,9 +30,12 @@ const FileUpload = () => {
 
   // State for PDF text extraction modal
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [modalContent, setModalContent] = useState('');
+  const [modalContent, setModalContent] = useState(''); // Holds PDF text or error messages
   const [modalTitle, setModalTitle] = useState('');
-  const [isExtracting, setIsExtracting] = useState(false);
+  const [isExtractingText, setIsExtractingText] = useState(false); // For PDF text extraction
+  const [isRecognizingEntities, setIsRecognizingEntities] = useState(false); // For entity recognition
+  const [extractedEntities, setExtractedEntities] = useState(null); // Holds recognized entities
+  const [currentFilenameForModal, setCurrentFilenameForModal] = useState('');
 
 
   const handleExtractText = async (fileInfo) => {
@@ -30,19 +43,15 @@ const FileUpload = () => {
       message.error('Only PDF files can have text extracted.');
       return;
     }
-    setIsExtracting(true);
+    setIsExtractingText(true);
+    setExtractedEntities(null); // Clear previous entities
+    setCurrentFilenameForModal(fileInfo.filename);
     setModalTitle(`Extracting text from ${fileInfo.filename}...`);
-    setModalContent(''); // Clear previous content
+    setModalContent('');
     setIsModalVisible(true);
 
     try {
-      // We need the relative path for the backend
-      // Assuming saved_path is "uploads/filename.pdf" and UPLOAD_DIR on backend is "uploads"
-      // We need to pass "filename.pdf" or the relative path from UPLOAD_DIR
-      // The `fileInfo.saved_path` might be an absolute path on the server or include the base upload dir.
-      // Let's assume `fileInfo.filename` is what the backend expects as `file_path` relative to `UPLOAD_DIR`
-      const relativePath = fileInfo.filename; // This assumes filename is unique and directly in UPLOAD_DIR
-
+      const relativePath = fileInfo.filename;
       const response = await axios.post(PDF_EXTRACT_URL, { file_path: relativePath });
       setModalTitle(`Text from ${fileInfo.filename}`);
       if (response.data && response.data.text) {
@@ -62,7 +71,41 @@ const FileUpload = () => {
       setModalTitle(`Error extracting text from ${fileInfo.filename}`);
       message.error(errorText);
     } finally {
-      setIsExtracting(false);
+      setIsExtractingText(false);
+    }
+  };
+
+  const handleRecognizeEntities = async () => {
+    if (!modalContent || typeof modalContent !== 'string' || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')) {
+      message.error('Cannot recognize entities: No valid text available or text extraction failed.');
+      return;
+    }
+    setIsRecognizingEntities(true);
+    setExtractedEntities(null); // Clear previous entities
+
+    try {
+      const response = await axios.post(ENTITY_EXTRACT_URL, { text: modalContent });
+      if (response.data && response.data.entities) {
+        setExtractedEntities(response.data.entities);
+        if (response.data.total_count === 0) {
+          message.info('No entities found in the current text.');
+        } else {
+          message.success(`Found ${response.data.total_count} entities.`);
+        }
+      } else {
+        setExtractedEntities({}); // Set to empty object to indicate no entities found
+        message.warning('No entities found or an error occurred during recognition.');
+      }
+    } catch (error) {
+      console.error('Error recognizing entities:', error);
+      let errorMsg = 'Failed to recognize entities.';
+      if (error.response && error.response.data && error.response.data.detail) {
+        errorMsg = error.response.data.detail;
+      }
+      message.error(errorMsg);
+      setExtractedEntities(null); // Set to null on error
+    } finally {
+      setIsRecognizingEntities(false);
     }
   };
 
@@ -70,6 +113,10 @@ const FileUpload = () => {
     setIsModalVisible(false);
     setModalContent('');
     setModalTitle('');
+    setExtractedEntities(null); // Clear entities when modal closes
+    setCurrentFilenameForModal('');
+    setIsExtractingText(false); // Reset states
+    setIsRecognizingEntities(false);
   };
 
   const handleFileChange = (info) => {
@@ -231,10 +278,11 @@ const FileUpload = () => {
                 actions.unshift( // Add to the beginning of actions array
                   <Button
                     type="link"
+                    icon={isExtractingText && currentFilenameForModal === item.filename ? <LoadingOutlined /> : <FileTextOutlined />}
                     onClick={() => handleExtractText(item)}
-                    disabled={isExtracting && modalTitle.includes(item.filename)}
+                    disabled={isExtractingText && currentFilenameForModal === item.filename}
                   >
-                    {isExtracting && modalTitle.includes(item.filename) ? <LoadingOutlined /> : 'Extract Text'}
+                    {isExtractingText && currentFilenameForModal === item.filename ? 'Extracting...' : 'Extract Text'}
                   </Button>
                 );
               }
@@ -242,7 +290,7 @@ const FileUpload = () => {
                 <List.Item actions={actions}>
                   <List.Item.Meta
                     avatar={<FileTextOutlined style={{ fontSize: '24px', color: '#1890ff' }} />}
-                  title={<Text strong>{item.filename}</Text>}
+                    title={<Text strong>{item.filename}</Text>}
                   description={
                     <Space direction="vertical" size={2}>
                       <Text type="secondary">Size: {(item.size / 1024 / 1024).toFixed(2)} MB</Text>
@@ -267,20 +315,56 @@ const FileUpload = () => {
         width="80%"
         style={{ top: 20 }}
         footer={[
+          <Button key="recognize"
+            onClick={handleRecognizeEntities}
+            loading={isRecognizingEntities}
+            icon={<ExperimentOutlined />}
+            disabled={isExtractingText || !modalContent || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')}
+          >
+            Recognize Entities
+          </Button>,
           <Button key="back" onClick={handleModalClose}>
             Close
           </Button>,
         ]}
       >
-        {isExtracting && modalContent === '' ? (
+        {isExtractingText && modalContent === '' ? (
           <div style={{ textAlign: 'center', padding: '50px' }}>
             <LoadingOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
             <Paragraph style={{ marginTop: '10px' }}>Extracting text...</Paragraph>
           </div>
         ) : (
-          <Paragraph style={{ whiteSpace: 'pre-wrap', maxHeight: '60vh', overflowY: 'auto' }}>
-            {modalContent}
-          </Paragraph>
+          <>
+            <Paragraph style={{ whiteSpace: 'pre-wrap', maxHeight: '50vh', overflowY: 'auto', marginBottom: '20px', border: '1px solid #f0f0f0', padding: '10px', borderRadius: '4px' }}>
+              {modalContent}
+            </Paragraph>
+            {extractedEntities && (
+              <div>
+                <Divider>Recognized Entities ({Object.values(extractedEntities).flat().length})</Divider>
+                {Object.entries(extractedEntities).map(([type, entities]) => (
+                  entities.length > 0 && (
+                    <div key={type} style={{ marginBottom: '10px' }}>
+                      <Title level={5} style={{ marginBottom: '5px' }}>{type}:</Title>
+                      {entities.map((entity, index) => (
+                        <Tag key={index} color={ENTITY_TYPE_COLORS[type] || 'default'} style={{ margin: '2px' }}>
+                          {entity}
+                        </Tag>
+                      ))}
+                    </div>
+                  )
+                ))}
+                {Object.values(extractedEntities).every(arr => arr.length === 0) && !isRecognizingEntities && (
+                     <Paragraph type="secondary" style={{textAlign: 'center'}}>No entities were found in the text.</Paragraph>
+                )}
+              </div>
+            )}
+            {isRecognizingEntities && (
+                <div style={{ textAlign: 'center', padding: '20px' }}>
+                    <LoadingOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
+                    <Paragraph style={{ marginTop: '8px' }}>Recognizing entities...</Paragraph>
+                </div>
+            )}
+          </>
         )}
       </Modal>
     </div>
