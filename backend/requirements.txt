@@ -21,6 +21,7 @@ neo4j==5.20.0           # Neo4j Python Driver
 # On Windows, ensure the latest Microsoft Visual C++ Redistributable is installed
 # to avoid potential DLL load issues with ezdxf or its (optional) dependencies.
 ezdxf==1.4.2
+python-docx==0.8.11     # For Word document (.docx) parsing
 
 # HTTP Client
 httpx==0.27.0           # Asynchronous HTTP client

@@ -1,8 +1,11 @@
 from app.services.neo4j_real_service import Neo4jRealService
 from app.services.bridge_entity_extractor import BridgeEntityExtractor
+from app.services.word_parser_service import WordParserService
+from app.services.word_content_analyzer import WordContentAnalyzer
 from typing import Dict, List, Any
 import logging
 import uuid
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -10,18 +13,110 @@ class KnowledgeGraphEngine:
     def __init__(self):
         try:
             self.neo4j_service = Neo4jRealService()
+            self.word_parser_service = WordParserService()
+            self.word_content_analyzer = WordContentAnalyzer() # Uses BridgeEntityExtractor internally
         except Exception as e:
-            logger.error(f"Failed to initialize Neo4jRealService in KnowledgeGraphEngine: {e}")
-            # Depending on the application's needs, either raise the exception,
-            # or set self.neo4j_service to None and handle it in methods.
-            # For now, let it raise to make the problem visible immediately.
+            logger.error(f"Failed to initialize services in KnowledgeGraphEngine: {e}")
             raise
+        # BridgeEntityExtractor is used by WordContentAnalyzer and build_graph_from_document
+        # If build_graph_from_document is to be kept separate for non-Word docs, it needs its own instance or access.
+        # For now, WordContentAnalyzer has its own. If build_graph_from_document is called by build_graph_from_word_document,
+        # then self.entity_extractor might be redundant if all text processing goes through word_content_analyzer.
+        # However, the original build_graph_from_document directly uses self.entity_extractor.
+        # Let's keep it for now, assuming build_graph_from_document can be called directly for plain text.
         self.entity_extractor = BridgeEntityExtractor()
 
-    def build_graph_from_document(self, text: str, document_name: str) -> Dict:
+
+    def build_graph_from_word_document(self, file_path: str, document_name: str) -> Dict:
+        """
+        Builds a knowledge graph from a Word document.
+        1. Parses Word document content using WordParserService.
+        2. Analyzes professional content using WordContentAnalyzer (determines doc type, extracts params).
+        3. Extracts entities and relationships from the text content by calling build_graph_from_document.
+        4. Builds the knowledge graph and stores it in Neo4j (handled by build_graph_from_document).
+        Returns a summary of the build process.
+        """
+        logger.info(f"Starting graph construction from Word document: {document_name} at {file_path}")
+        try:
+            # 1. Parse Word document
+            parsed_content = self.word_parser_service.extract_text_content(file_path)
+            tables = self.word_parser_service.extract_tables(file_path)
+
+            text_for_extraction = parsed_content.get("text")
+            if not text_for_extraction:
+                logger.warning(f"No text content extracted from Word document: {document_name}")
+                return {
+                    "status": "Error: No text content from Word file", "document_name": document_name,
+                    "nodes_created": 0, "rels_created": 0
+                }
+
+            # 2. Analyze professional content to guess document type and extract specific features
+            # This is a placeholder for intelligent document type detection.
+            # For now, we'll use a heuristic or a default. Let's assume 'technical_standard' as a common case.
+            # A more advanced system would use ML or rules based on metadata, structure, keywords.
+            document_type_guess = "technical_standard" # Default guess
+
+            # Example: Use WordContentAnalyzer based on the guessed type.
+            # The analyzer methods currently return entities; this might be redundant if build_graph_from_document
+            # re-extracts entities from the same text. The primary value of analyzers here would be
+            # for type-specific information (clauses, formulas, etc.) or specialized entity lists.
+            # For now, let's say analysis provides context or can guide further steps.
+            if document_type_guess == "technical_standard":
+                analysis_summary = self.word_content_analyzer.analyze_technical_standard(parsed_content)
+            elif document_type_guess == "design_specification":
+                analysis_summary = self.word_content_analyzer.analyze_design_specification(parsed_content)
+            elif document_type_guess == "construction_manual":
+                analysis_summary = self.word_content_analyzer.analyze_construction_manual(parsed_content)
+            else:
+                analysis_summary = {"info": "No specific analyzer run, using generic extraction."}
+
+
+            # Extract technical parameters from tables using WordContentAnalyzer
+            technical_parameters_report = self.word_content_analyzer.extract_technical_parameters(tables)
+
+            # TODO: Integrate technical_parameters_from_tables into the knowledge graph.
+            # This could involve creating new nodes for parameters, linking them to components,
+            # or adding them as properties. This is a significant modeling decision.
+            # For MVP, we log them and include in the report. Future work to make them graph elements.
+            logger.info(f"Extracted {len(technical_parameters_report.get('extracted_parameters_summary',[]))} potential parameters from tables in {document_name}.")
+
+            # 3. & 4. Build graph using the main text content via existing method
+            # Pass the determined/guessed document type.
+            graph_build_summary = self.build_graph_from_document(
+                text=text_for_extraction,
+                document_name=document_name,
+                document_type=document_type_guess # Pass the guessed type
+            )
+
+            # Enhance the summary with Word-specific processing information
+            graph_build_summary["word_document_path"] = file_path
+            graph_build_summary["word_metadata"] = parsed_content.get("metadata", {})
+            graph_build_summary["tables_summary"] = {
+                "table_count": len(tables),
+                "technical_parameters_found": len(technical_parameters_report.get("extracted_parameters_summary", [])),
+                "parameters_details": technical_parameters_report.get("extracted_parameters_summary", []) # Could be verbose
+            }
+            graph_build_summary["content_analysis_type_applied"] = document_type_guess
+            graph_build_summary["content_analysis_summary"] = analysis_summary # Contains entities from analyzer run
+
+            logger.info(f"Successfully processed Word document {document_name} for graph construction. Base graph built, parameters extracted.")
+            return graph_build_summary
+
+        except Exception as e:
+            logger.exception(f"Error building graph from Word document {document_name} at {file_path}: {e}")
+            return {
+                "status": "Error during Word document graph construction",
+                "document_name": document_name,
+                "file_path": file_path,
+                "error": str(e),
+                "nodes_created": 0,
+                "rels_created": 0
+            }
+
+    def build_graph_from_document(self, text: str, document_name: str, document_type: str = "unknown") -> Dict:
         """
         Builds a knowledge graph from a given document text.
-        1. Extracts professional entities.
+        1. Extracts professional entities using self.entity_extractor.
         2. Identifies relationships between entities.
         3. Stores entities and relationships into Neo4j.
         4. Returns a summary of the build process.
