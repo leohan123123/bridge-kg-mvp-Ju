@@ -1,48 +1,48 @@
-import httpx # Changed from requests to httpx for async
+import httpx
 import json
 from typing import Optional, Dict, Any
 
-from ..core.config import settings # Assuming settings will hold OLLAMA_API_URL
+from ..core.config import settings
 
-# Default Ollama API URL if not specified in settings
-DEFAULT_OLLAMA_API_URL = "http://localhost:11434/api/chat"
-DEFAULT_MODEL = "qwen2:0.5b" # Using a smaller model for initial testing
+# DeepSeek API configuration
+DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
+DEFAULT_MODEL = "deepseek-chat"
 
-class OllamaError(Exception):
-    """Custom exception for Ollama API errors."""
+class AIServiceError(Exception):
+    """Custom exception for AI service errors."""
     def __init__(self, message: str, status_code: Optional[int] = None):
         super().__init__(message)
         self.status_code = status_code
 
-async def get_ollama_chat_response(
+async def get_ai_chat_response(
     message: str,
     context: Optional[str] = None,
     model: Optional[str] = None,
-    ollama_api_url: Optional[str] = None
+    api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Sends a message to the Ollama API and returns the chat response.
+    Sends a message to the DeepSeek API and returns the chat response.
 
     Args:
         message: The user's message.
         context: Optional context to provide to the LLM.
-        model: The Ollama model to use (e.g., "qwen2.5:7b", "llama3.1:8b").
-               Defaults to DEFAULT_MODEL.
-        ollama_api_url: The URL of the Ollama API. Defaults to OLLAMA_API_URL from settings
-                        or DEFAULT_OLLAMA_API_URL.
+        model: The model to use (defaults to deepseek-chat).
+        api_key: DeepSeek API key from settings.
 
     Returns:
-        A dictionary containing the Ollama API response.
+        A dictionary containing the API response.
 
     Raises:
-        OllamaError: If the API request fails or returns an error.
+        AIServiceError: If the API request fails or returns an error.
     """
-    api_url = ollama_api_url or str(getattr(settings, 'OLLAMA_API_URL', DEFAULT_OLLAMA_API_URL))
-    selected_model = model or getattr(settings, 'OLLAMA_DEFAULT_MODEL', DEFAULT_MODEL)
+    api_key = api_key or getattr(settings, 'DEEPSEEK_API_KEY', None)
+    if not api_key:
+        raise AIServiceError("DeepSeek API key not configured")
+    
+    selected_model = model or getattr(settings, 'DEEPSEEK_DEFAULT_MODEL', DEFAULT_MODEL)
 
-    system_prompt = "You are a helpful assistant."
+    system_prompt = "You are a helpful AI assistant specialized in bridge engineering and knowledge management. Provide clear, accurate, and professional responses."
     if context:
-        # Basic context integration. This can be refined.
         user_message_content = f"Context: {context}\n\nUser Question: {message}"
     else:
         user_message_content = message
@@ -53,71 +53,93 @@ async def get_ollama_chat_response(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message_content}
         ],
-        "stream": False  # For now, we'll use non-streaming responses
+        "stream": False,
+        "temperature": 0.7,
+        "max_tokens": 2048
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client: # Increased timeout
-        try:
-            response = await client.post(api_url, json=payload)
-            response.raise_for_status()  # Raises HTTPStatusError for 4xx/5xx responses
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
-            # The response from Ollama is a stream of JSON objects, even for stream=False.
-            # We need to parse them line by line if it's not a single JSON object.
-            # However, with stream=False, it should be a single JSON object.
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
+            response.raise_for_status()
+
             response_data = response.json()
 
             # Ensure the response structure is as expected
-            if "message" not in response_data or "content" not in response_data["message"]:
-                raise OllamaError(f"Unexpected response structure from Ollama: {response_data}")
+            if "choices" not in response_data or not response_data["choices"]:
+                raise AIServiceError(f"Unexpected response structure from DeepSeek: {response_data}")
 
-            return response_data
+            # Extract the message content from DeepSeek response format
+            choice = response_data["choices"][0]
+            if "message" not in choice or "content" not in choice["message"]:
+                raise AIServiceError(f"Invalid message structure in DeepSeek response: {choice}")
+
+            # Convert to a format compatible with existing frontend
+            return {
+                "message": {
+                    "role": choice["message"]["role"],
+                    "content": choice["message"]["content"]
+                },
+                "model": response_data.get("model", selected_model),
+                "created": response_data.get("created"),
+                "usage": response_data.get("usage", {})
+            }
 
         except httpx.HTTPStatusError as e:
-            error_message = f"Ollama API request failed with status {e.response.status_code}: {e.response.text}"
-            print(f"Error: {error_message}") # For logging
-            raise OllamaError(error_message, status_code=e.response.status_code) from e
+            error_message = f"DeepSeek API request failed with status {e.response.status_code}: {e.response.text}"
+            print(f"Error: {error_message}")
+            raise AIServiceError(error_message, status_code=e.response.status_code) from e
         except httpx.RequestError as e:
-            error_message = f"Error connecting to Ollama API at {api_url}: {e}"
-            print(f"Error: {error_message}") # For logging
-            raise OllamaError(error_message) from e
+            error_message = f"Error connecting to DeepSeek API: {e}"
+            print(f"Error: {error_message}")
+            raise AIServiceError(error_message) from e
         except json.JSONDecodeError as e:
-            error_message = f"Failed to decode JSON response from Ollama: {e}. Response text: {response.text if 'response' in locals() else 'N/A'}"
-            print(f"Error: {error_message}") # For logging
-            raise OllamaError(error_message) from e
+            error_message = f"Failed to decode JSON response from DeepSeek: {e}"
+            print(f"Error: {error_message}")
+            raise AIServiceError(error_message) from e
+
+# Keep backward compatibility with existing code
+async def get_ollama_chat_response(
+    message: str,
+    context: Optional[str] = None,
+    model: Optional[str] = None,
+    ollama_api_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """Backward compatibility wrapper that calls DeepSeek API."""
+    return await get_ai_chat_response(message, context, model)
 
 if __name__ == '__main__':
     import asyncio
 
     async def main():
-        print(f"Testing Ollama connection to: {getattr(settings, 'OLLAMA_API_URL', DEFAULT_OLLAMA_API_URL)}")
-        print(f"Using model: {getattr(settings, 'OLLAMA_DEFAULT_MODEL', DEFAULT_MODEL)}")
-
-        # Make sure Ollama server is running and the model is pulled:
-        # ollama pull qwen2:0.5b
+        print(f"Testing DeepSeek API connection")
+        print(f"Using model: {getattr(settings, 'DEEPSEEK_DEFAULT_MODEL', DEFAULT_MODEL)}")
 
         try:
             # Test without context
             print("\n--- Test 1: Without context ---")
-            response_no_context = await get_ollama_chat_response(message="Hello, who are you?")
-            print("Ollama Response (no context):")
-            # print(json.dumps(response_no_context, indent=2))
+            response_no_context = await get_ai_chat_response(message="Hello, who are you?")
+            print("DeepSeek Response (no context):")
             print(f"  Role: {response_no_context.get('message', {}).get('role')}")
             print(f"  Content: {response_no_context.get('message', {}).get('content')}")
-
 
             # Test with context
             print("\n--- Test 2: With context ---")
             sample_context = "The bridge is a suspension bridge built in 1967. It has shown signs of corrosion on the main cables."
-            response_with_context = await get_ollama_chat_response(
+            response_with_context = await get_ai_chat_response(
                 message="What are the main concerns for this structure?",
                 context=sample_context
             )
-            print("Ollama Response (with context):")
-            # print(json.dumps(response_with_context, indent=2))
+            print("DeepSeek Response (with context):")
             print(f"  Role: {response_with_context.get('message', {}).get('role')}")
             print(f"  Content: {response_with_context.get('message', {}).get('content')}")
 
-        except OllamaError as e:
+        except AIServiceError as e:
             print(f"An error occurred: {e}")
             if e.status_code:
                 print(f"Status Code: {e.status_code}")

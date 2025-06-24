@@ -40,6 +40,10 @@ services:
     environment:
       # PYTHONUNBUFFERED 和 PYTHONPATH 通常在 Dockerfile 中设置
       - DEBUG=${DEBUG:-True} # 从.env 读取 DEBUG, 默认为 True
+      # DeepSeek AI服务配置
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_DEFAULT_MODEL=${DEEPSEEK_DEFAULT_MODEL:-deepseek-chat}
+      # Ollama配置（备用）
       - OLLAMA_API_URL=${OLLAMA_API_URL:-http://localhost:11434/api/chat}
       - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-qwen2:0.5b}
     depends_on:

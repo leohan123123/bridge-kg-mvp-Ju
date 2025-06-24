@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
-from ....services.ai_service import get_ollama_chat_response, OllamaError
+from ....services.ai_service import get_ai_chat_response, get_ollama_chat_response, AIServiceError
 from ....core.config import settings
 
 router = APIRouter()
@@ -11,14 +11,14 @@ router = APIRouter()
 class AIChatRequest(BaseModel):
     message: str = Field(..., description="The user's message to the AI.")
     context: Optional[str] = Field(None, description="Optional context to provide to the AI.")
-    model: Optional[str] = Field(None, description="Optional Ollama model to use (e.g., 'qwen2.5:7b'). Uses system default if not provided.")
+    model: Optional[str] = Field(None, description="Optional AI model to use (e.g., 'deepseek-chat'). Uses system default if not provided.")
     # stream: bool = Field(False, description="Whether to stream the response.") # Streaming not implemented yet
 
 class AIChatResponse(BaseModel):
     role: str = Field(description="The role of the responder (e.g., 'assistant').")
     content: str = Field(description="The AI's response content.")
-    model_used: str = Field(description="The Ollama model that generated the response.")
-    # additional_info: Optional[Dict[str, Any]] = Field(None, description="Additional information from the Ollama response if any.")
+    model_used: str = Field(description="The AI model that generated the response.")
+    # additional_info: Optional[Dict[str, Any]] = Field(None, description="Additional information from the AI response if any.")
 
 
 @router.post("/chat", response_model=AIChatResponse)
@@ -27,52 +27,64 @@ async def handle_ai_chat(
 ):
     """
     Receives a user message and optional context, communicates with the
-    Ollama service, and returns the AI's response.
+    AI service (DeepSeek or Ollama), and returns the AI's response.
     """
     try:
-        selected_model = request.model or getattr(settings, 'OLLAMA_DEFAULT_MODEL', "qwen2:0.5b") # Fallback if not in settings
+        # Try DeepSeek first, fallback to Ollama
+        selected_model = request.model or getattr(settings, 'DEEPSEEK_DEFAULT_MODEL', 
+                                                 getattr(settings, 'OLLAMA_DEFAULT_MODEL', "deepseek-chat"))
 
-        ollama_response = await get_ollama_chat_response(
-            message=request.message,
-            context=request.context,
-            model=selected_model
-        )
+        try:
+            # Primary: Use DeepSeek API
+            ai_response = await get_ai_chat_response(
+                message=request.message,
+                context=request.context,
+                model=selected_model
+            )
+        except AIServiceError as deepseek_error:
+            # Fallback: Use Ollama if DeepSeek fails
+            print(f"DeepSeek service failed, trying Ollama: {deepseek_error}")
+            ai_response = await get_ollama_chat_response(
+                message=request.message,
+                context=request.context,
+                model=getattr(settings, 'OLLAMA_DEFAULT_MODEL', "qwen2:0.5b")
+            )
 
         # Extract the relevant part of the response
-        # Based on current ai_service.py, response is like:
+        # Response structure is unified between DeepSeek and Ollama:
         # {
-        #   "model": "qwen2:0.5b",
-        #   "created_at": "...",
+        #   "model": "deepseek-chat" or "qwen2:0.5b",
+        #   "created": "...",
         #   "message": { "role": "assistant", "content": "..." },
-        #   "done": true,
-        #   ... (other stats)
+        #   "usage": { ... }
         # }
 
-        if not ollama_response or "message" not in ollama_response:
+        if not ai_response or "message" not in ai_response:
             raise HTTPException(status_code=500, detail="Invalid response structure from AI service.")
 
-        ai_message = ollama_response.get("message", {})
+        ai_message = ai_response.get("message", {})
         response_content = ai_message.get("content", "")
         response_role = ai_message.get("role", "assistant")
-        model_used = ollama_response.get("model", selected_model)
-
+        model_used = ai_response.get("model", selected_model)
 
         return AIChatResponse(
             role=response_role,
             content=response_content,
             model_used=model_used
-            # additional_info={k: v for k, v in ollama_response.items() if k not in ["message", "model"]}
+            # additional_info={k: v for k, v in ai_response.items() if k not in ["message", "model"]}
         )
 
-    except OllamaError as e:
+    except AIServiceError as e:
         # Log the error e.message or str(e)
-        print(f"Ollama service error: {e}") # Replace with actual logging
+        print(f"AI service error: {e}") # Replace with actual logging
         detail = f"Error communicating with AI service: {str(e)}"
         if e.status_code:
             if e.status_code == 404: # Model not found
-                 detail = f"AI model '{request.model or selected_model}' not found on Ollama server. Ensure it's pulled. Error: {str(e)}"
+                 detail = f"AI model '{request.model or selected_model}' not found. Ensure it's available. Error: {str(e)}"
             elif e.status_code == 503: # Service unavailable
-                 detail = f"AI service (Ollama) is unavailable. Ensure it's running. Error: {str(e)}"
+                 detail = f"AI service is unavailable. Check configuration and connectivity. Error: {str(e)}"
+            elif e.status_code == 401: # Unauthorized (API key issue)
+                 detail = f"AI service authentication failed. Check API key configuration. Error: {str(e)}"
         raise HTTPException(status_code=e.status_code or 503, detail=detail)
     except HTTPException:
         # Re-raise HTTPException if it was raised intentionally

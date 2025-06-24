@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # 日志级别
     LOG_LEVEL: str = "INFO"
 
+    # DeepSeek AI服务配置
+    DEEPSEEK_API_KEY: str = "" # DeepSeek API密钥
+    DEEPSEEK_DEFAULT_MODEL: str = "deepseek-chat" # 默认使用的DeepSeek模型
+
     # Ollama Configuration
     OLLAMA_API_URL: AnyHttpUrl = "http://localhost:11434/api/chat" # Default Ollama API URL
     OLLAMA_DEFAULT_MODEL: str = "qwen2:0.5b" # Default model to use if not specified in request
@@ -65,7 +69,7 @@ if settings.DEBUG:
     # Use model_dump() in Pydantic V2
     for key, value in settings.model_dump().items():
         # 避免打印敏感信息如密码
-        if "password" in key.lower() or "secret" in key.lower():
+        if "password" in key.lower() or "secret" in key.lower() or "api_key" in key.lower():
             print(f"  {key}: ******")
         else:
             print(f"  {key}: {value}")
