@@ -42,3 +42,5 @@ idna==3.7               # Internationalized Domain Names in Applications (depend
 
 # Optional: For Pydantic email validation, if EmailStr is used.
 # email-validator==2.1.1 # If uncommented, use '==' for precise versioning.
+
+PyPDF2==3.0.1
