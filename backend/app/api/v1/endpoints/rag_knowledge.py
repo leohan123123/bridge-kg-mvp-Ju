@@ -1,169 +1,194 @@
-from fastapi import APIRouter, HTTPException, Body, Path, Query
-from pydantic import BaseModel # Ensure BaseModel is imported
+from fastapi import APIRouter, HTTPException, Body, Path, Query, Depends
+from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+import logging
 
-# Import service functions (assuming they are in the services directory)
-# Adjust path if your structure is different, e.g., app.services
-from backend.app.services import knowledge_graph_builder as kgb_service
-from backend.app.services import neo4j_rag_service as neo4j_service
-# from backend.app.services import knowledge_standardizer as ks_service # Will be used later
+# Import the new KnowledgeGraphEngine
+from backend.app.services.knowledge_graph_engine import KnowledgeGraphEngine
+# Assuming settings might be needed for Neo4jRealService if not handled by engine's init
+# from backend.app.core.config import settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- Request Models (Pydantic models for request bodies) ---
+# --- Initialize KnowledgeGraphEngine ---
+# For simplicity, a global instance. For more complex scenarios, consider FastAPI's Depends.
+# This instance will live for the duration of the application.
+# Ensure Neo4jRealService within KnowledgeGraphEngine handles connections robustly (e.g., driver is long-lived).
+try:
+    knowledge_engine = KnowledgeGraphEngine()
+except Exception as e:
+    logger.error(f"Fatal error: Could not initialize KnowledgeGraphEngine: {e}")
+    # If the engine can't start, the API is likely non-functional.
+    # This could be handled by having endpoints return a 503 Service Unavailable if engine is None.
+    knowledge_engine = None # Or raise to prevent app startup
+
+# --- Request Models ---
 class BuildGraphRequest(BaseModel):
-    text_content: str # Or perhaps a list of texts, or a document ID
-    entities: Optional[Dict[str, Any]] = None # Entities already identified, if any
+    text_content: str
+    document_name: str
 
-class QueryPathRequest(BaseModel):
-    start_entity_id: str
-    end_entity_id: str
-    max_path_length: Optional[int] = 5
+# QueryPathRequest can be removed if the endpoint is removed or significantly changed
+# class QueryPathRequest(BaseModel):
+#     start_entity_id: str
+#     end_entity_id: str
+#     max_path_length: Optional[int] = 5
 
-# --- Response Models (Pydantic models for responses) ---
-# For simplicity, many responses will be Dicts or Lists, but Pydantic models are good practice.
+# --- Response Models ---
 class GraphStatsResponse(BaseModel):
-    node_count: int
-    edge_count: int
+    total_nodes: int
+    total_relationships: int
+    node_type_distribution: Dict[str, int]
+    relationship_type_distribution: Dict[str, int]
     graph_density: float
-    # Potentially other stats like entity type distribution, etc.
+    connected_components_count: Optional[str] # As it's a string in the service for now
 
 class BuildGraphResponse(BaseModel):
-    message: str
-    graph_summary: Optional[Dict[str, Any]] = None # e.g., nodes and edges count from create_graph_from_triples
+    status: str
+    document_name: str
+    entities_found_by_category: Optional[Dict[str, int]] = None
+    unique_entities_processed: Optional[int] = None
+    relationships_extracted: Optional[int] = None
+    relationships_created_in_db: Optional[int] = None
+    error: Optional[str] = None
+
 
 # --- API Endpoints ---
 
 @router.post("/build_graph", response_model=BuildGraphResponse)
-async def build_graph_from_text(request_data: BuildGraphRequest = Body(...)):
+async def build_graph_from_text_api(request_data: BuildGraphRequest = Body(...)):
     """
-    Builds a knowledge graph from the provided text content and optional pre-identified entities.
+    Builds a knowledge graph from the provided text content and document name.
     """
+    if not knowledge_engine:
+        raise HTTPException(status_code=503, detail="Knowledge Graph Engine not available.")
     try:
-        current_entities = request_data.entities
-        if not current_entities and "bridge" in request_data.text_content.lower(): # Very basic placeholder
-             current_entities = {"e_stub_1": {"id": "e_stub_1", "name": "A Bridge From Text", "type": "Bridge"}}
-
-        relations = kgb_service.extract_bridge_relations(text=request_data.text_content, entities=current_entities or {})
-
-        triples = kgb_service.build_knowledge_triples(relations=relations)
-
-        # In a full implementation, this would involve multiple calls to neo4j_service
-        # to create nodes and relationships based on the triples.
-        # For example:
-        # for triple in triples:
-        #   # Assuming triple structure like {'head': 'id1', 'relation': 'RELATES_TO', 'tail': 'id2', 'head_type': 'TypeA', ...}
-        #   # You'd need to ensure entities are created before linking, or use MERGE.
-        #   # This part requires careful design based on how IDs and entity properties are managed.
-        #   # head_node_id = neo4j_service.create_indexed_entity(triple['head_type'], triple['head_properties'])
-        #   # tail_node_id = neo4j_service.create_indexed_entity(triple['tail_type'], triple['tail_properties'])
-        #   # neo4j_service.create_weighted_relationship(head_node_id, tail_node_id, triple['relation'], triple.get('properties', {}))
-        # For now, using the stubbed create_graph_from_triples from kgb_service:
-        graph_creation_result = kgb_service.create_graph_from_triples(triples=triples)
-
-        return BuildGraphResponse(
-            message="Knowledge graph build process initiated (stubbed).",
-            graph_summary=graph_creation_result.get("graph_summary")
+        # Call the KnowledgeGraphEngine method
+        result = knowledge_engine.build_graph_from_document(
+            text=request_data.text_content,
+            document_name=request_data.document_name
         )
+        if result.get("status") == "Error during graph construction":
+             raise HTTPException(status_code=500, detail=result.get("error", "Unknown error building graph"))
+        return BuildGraphResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
-        # Log the exception e
+        logger.exception(f"Error building graph for document {request_data.document_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Error building graph: {str(e)}")
 
 
 @router.get("/search", response_model=List[Dict[str, Any]])
-async def search_knowledge_graph(
-    keywords: str = Query(..., description="Comma-separated keywords for search"),
-    entity_types: Optional[str] = Query(None, description="Comma-separated entity types to filter by (e.g., Bridge,Material)")
+async def search_knowledge_graph_api(
+    query: str = Query(..., description="Search query string"),
+    # entity_types: Optional[str] = Query(None, description="Comma-separated entity types (currently not fully supported by engine's query)")
 ):
     """
-    Searches the knowledge graph by keywords, with optional filtering by entity types.
+    Searches the knowledge graph based on a query string.
+    (Note: entity_types filter from original API is not directly supported by current engine.query_graph_knowledge)
     """
-    keyword_list = [kw.strip() for kw in keywords.split(",")]
-    type_list = [et.strip() for et in entity_types.split(",")] if entity_types else None
-
+    if not knowledge_engine:
+        raise HTTPException(status_code=503, detail="Knowledge Graph Engine not available.")
     try:
-        results = neo4j_service.search_by_keywords(keywords=keyword_list, entity_types=type_list)
-        return results # Returns empty list if no results, which is fine for search.
+        # The engine's query_graph_knowledge takes a single query string.
+        # Keyword splitting and type filtering would need to be added to the engine or handled here if desired.
+        results = knowledge_engine.query_graph_knowledge(query=query)
+        # Check if results indicate an error from the engine
+        if results and isinstance(results, list) and len(results) > 0 and "error" in results[0]:
+            raise HTTPException(status_code=500, detail=results[0]["error"])
+        return results
+    except HTTPException:
+        raise
     except Exception as e:
-        # Log the exception e
+        logger.exception(f"Error during graph search for query '{query}': {e}")
         raise HTTPException(status_code=500, detail=f"Error during graph search: {str(e)}")
 
 
 @router.get("/entity/{entity_id}/neighborhood", response_model=Dict[str, Any])
 async def get_entity_neighborhood_api(
-    entity_id: str = Path(..., description="The ID of the entity to get the neighborhood for"),
-    radius: int = Query(1, description="The radius of the neighborhood (number of hops)", ge=0, le=5) # Added le=5 for safety
+    entity_id: str = Path(..., description="The Neo4j element ID of the entity"),
+    max_depth: int = Query(2, description="The maximum depth of the neighborhood (number of hops)", ge=1, le=5)
 ):
     """
-    Retrieves the neighborhood (nodes and relationships) around a specific entity.
+    Retrieves the neighborhood (nodes and relationships) around a specific entity using its Neo4j element ID.
     """
+    if not knowledge_engine:
+        raise HTTPException(status_code=503, detail="Knowledge Graph Engine not available.")
     try:
-        neighborhood = neo4j_service.get_entity_neighborhood(entity_id=entity_id, radius=radius)
-        if not neighborhood or not neighborhood.get("center_node"):
-             raise HTTPException(status_code=404, detail=f"Entity with ID '{entity_id}' not found or has no neighborhood.")
+        # Directly use the neo4j_service from the engine instance
+        neighborhood = knowledge_engine.neo4j_service.get_entity_neighbors(entity_id=entity_id, max_depth=max_depth)
+
+        # get_entity_neighbors returns {"nodes": [], "relationships": []}
+        # Check if the primary node itself was found (e.g. if nodes list is empty after a valid ID query)
+        # This check might be too strict if a node exists but has no neighbors within max_depth.
+        # A better check might be to see if the start_node is part of the 'nodes' list.
+        if not neighborhood or not neighborhood.get("nodes"):
+             # Check if the entity itself exists, even if it has no neighbors
+             # This would require a separate call like `engine.neo4j_service.get_entity_by_id(entity_id)`
+             # For now, if nodes list is empty, assume it's effectively not found or isolated.
+             pass # Allow empty results if a node is isolated.
+
         return neighborhood
-    except HTTPException: # Re-raise if it's already an HTTPException (e.g. 404)
-        raise
     except Exception as e:
-        # Log the exception e
+        # Catch specific Neo4j client errors if possible, e.g., if ID format is wrong or connection fails
+        logger.exception(f"Error retrieving entity neighborhood for ID '{entity_id}': {e}")
+        # Check if the error message suggests "not found" vs. other errors
+        if "not found" in str(e).lower(): # Very basic check
+            raise HTTPException(status_code=404, detail=f"Entity with ID '{entity_id}' not found or error fetching.")
         raise HTTPException(status_code=500, detail=f"Error retrieving entity neighborhood: {str(e)}")
 
 
-@router.post("/query_path", response_model=List[List[Dict[str, Any]]])
-async def query_reasoning_path(request_data: QueryPathRequest = Body(...)):
-    """
-    Finds and returns reasoning paths between two entities in the knowledge graph.
-    """
-    try:
-        paths = neo4j_service.get_reasoning_path(
-            start_node_id=request_data.start_entity_id,
-            end_node_id=request_data.end_entity_id,
-            max_path_length=request_data.max_path_length
-        )
-        return paths # Returns empty list if no paths found.
-    except Exception as e:
-        # Log the exception e
-        raise HTTPException(status_code=500, detail=f"Error querying reasoning path: {str(e)}")
+# @router.post("/query_path", response_model=List[List[Dict[str, Any]]])
+# async def query_reasoning_path_api(request_data: QueryPathRequest = Body(...)):
+#     """
+#     Finds and returns reasoning paths between two entities. (Currently Not Implemented)
+#     """
+#     raise HTTPException(status_code=501, detail="Querying reasoning paths is not implemented yet.")
 
 @router.get("/graph_stats", response_model=GraphStatsResponse)
-async def get_graph_statistics():
+async def get_graph_statistics_api():
     """
-    Provides statistics about the current knowledge graph (e.g., node count, edge count).
+    Provides statistics about the current knowledge graph.
     """
+    if not knowledge_engine:
+        raise HTTPException(status_code=503, detail="Knowledge Graph Engine not available.")
     try:
-        # These would typically come from Neo4j queries
-        # e.g., result = neo4j_service.run_query("MATCH (n) RETURN count(n) AS node_count")
-        # node_count = result[0]["node_count"]
-        # result = neo4j_service.run_query("MATCH ()-[r]->() RETURN count(r) AS edge_count")
-        # edge_count = result[0]["edge_count"]
-
-        stub_node_count = 150 # Placeholder
-        stub_edge_count = 300 # Placeholder
-
-        density = 0.0
-        if stub_node_count > 1:
-            # For directed graph: E / (V * (V - 1))
-            density = stub_edge_count / (stub_node_count * (stub_node_count - 1))
-            density = round(density, 4)
-
-        return GraphStatsResponse(
-            node_count=stub_node_count,
-            edge_count=stub_edge_count,
-            graph_density=density
-        )
+        stats = knowledge_engine.neo4j_service.get_graph_statistics()
+        # The GraphStatsResponse model should match the keys returned by get_graph_statistics()
+        # Original keys: total_nodes, total_relationships, node_type_distribution, relationship_type_distribution, graph_density, connected_components_count
+        if stats.get("total_nodes", -1) == -1 : # Indicates an error from the service
+            raise HTTPException(status_code=500, detail="Failed to retrieve graph statistics from the service.")
+        return GraphStatsResponse(**stats)
+    except HTTPException:
+        raise
     except Exception as e:
-        # Log the exception e
+        logger.exception(f"Error retrieving graph statistics: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving graph statistics: {str(e)}")
 
-# Example of how to integrate this router into a FastAPI app (e.g., in main.py):
-#
+# Ensure the main application (e.g., main.py) correctly includes this router
+# and handles the lifecycle of the knowledge_engine if needed (e.g., closing connections on shutdown).
+# FastAPI events (startup/shutdown) can be used for this.
+
+# Example for main.py:
 # from fastapi import FastAPI
 # from backend.app.api.v1.endpoints import rag_knowledge
-#
-# app = FastAPI(title="Bridge KG MVP API")
-#
+# from contextlib import asynccontextmanager
+
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     # Startup: Initialize resources, like the knowledge_engine if not global
+#     # For the global `knowledge_engine`, ensure its `close_services` is called on shutdown.
+#     yield
+#     # Shutdown: Cleanup resources
+#     if rag_knowledge.knowledge_engine:
+#         rag_knowledge.knowledge_engine.close_services()
+#         print("Knowledge engine services closed.")
+
+# app = FastAPI(title="Bridge KG MVP API", lifespan=lifespan)
 # app.include_router(rag_knowledge.router, prefix="/api/v1/rag", tags=["RAG Knowledge Graph"])
 #
 # if __name__ == "__main__":
 #     import uvicorn
+#     # Ensure logging is configured for Uvicorn if running this way
+#     logging.basicConfig(level=logging.INFO)
 #     uvicorn.run(app, host="0.0.0.0", port=8000)
