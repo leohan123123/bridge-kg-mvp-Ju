@@ -11,6 +11,8 @@ const ALLOWED_FILE_TYPES = ['.dxf', '.pdf', '.ifc'];
 const UPLOAD_URL = '/v1/files/upload'; // Backend endpoint
 const PDF_EXTRACT_URL = '/v1/pdf/extract'; // PDF Text Extraction endpoint
 const ENTITY_EXTRACT_URL = '/v1/entities/extract'; // Entity Extraction endpoint
+const BUILD_GRAPH_URL = '/api/v1/rag/build_graph'; // RAG Knowledge Graph Build endpoint
+const GRAPH_STATS_URL = '/api/v1/rag/graph_stats'; // RAG Graph Stats endpoint
 
 // Define colors for entity types
 const ENTITY_TYPE_COLORS = {
@@ -36,6 +38,14 @@ const FileUpload = () => {
   const [isRecognizingEntities, setIsRecognizingEntities] = useState(false); // For entity recognition
   const [extractedEntities, setExtractedEntities] = useState(null); // Holds recognized entities
   const [currentFilenameForModal, setCurrentFilenameForModal] = useState('');
+
+  // State for Knowledge Graph Building
+  const [isBuildingGraph, setIsBuildingGraph] = useState(false);
+  const [graphBuildProgress, setGraphBuildProgress] = useState({ step: '', percent: 0 });
+  const [graphBuildStats, setGraphBuildStats] = useState(null); // { nodes: 0, edges: 0, density: 0.0 }
+  const [graphBuildError, setGraphBuildError] = useState(null);
+  const [currentTextForGraphBuild, setCurrentTextForGraphBuild] = useState(''); // Text used for the current graph build
+  const [currentEntitiesForGraphBuild, setCurrentEntitiesForGraphBuild] = useState(null); // Entities used for the current graph build
 
 
   const handleExtractText = async (fileInfo) => {
@@ -75,39 +85,39 @@ const FileUpload = () => {
     }
   };
 
-  const handleRecognizeEntities = async () => {
-    if (!modalContent || typeof modalContent !== 'string' || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')) {
-      message.error('Cannot recognize entities: No valid text available or text extraction failed.');
-      return;
-    }
-    setIsRecognizingEntities(true);
-    setExtractedEntities(null); // Clear previous entities
+  // const handleRecognizeEntities = async () => { // This is the original one, to be replaced or merged
+  //   if (!modalContent || typeof modalContent !== 'string' || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')) {
+  //     message.error('Cannot recognize entities: No valid text available or text extraction failed.');
+  //     return;
+  //   }
+  //   setIsRecognizingEntities(true);
+  //   setExtractedEntities(null); // Clear previous entities
 
-    try {
-      const response = await axios.post(ENTITY_EXTRACT_URL, { text: modalContent });
-      if (response.data && response.data.entities) {
-        setExtractedEntities(response.data.entities);
-        if (response.data.total_count === 0) {
-          message.info('No entities found in the current text.');
-        } else {
-          message.success(`Found ${response.data.total_count} entities.`);
-        }
-      } else {
-        setExtractedEntities({}); // Set to empty object to indicate no entities found
-        message.warning('No entities found or an error occurred during recognition.');
-      }
-    } catch (error) {
-      console.error('Error recognizing entities:', error);
-      let errorMsg = 'Failed to recognize entities.';
-      if (error.response && error.response.data && error.response.data.detail) {
-        errorMsg = error.response.data.detail;
-      }
-      message.error(errorMsg);
-      setExtractedEntities(null); // Set to null on error
-    } finally {
-      setIsRecognizingEntities(false);
-    }
-  };
+  //   try {
+  //     const response = await axios.post(ENTITY_EXTRACT_URL, { text: modalContent });
+  //     if (response.data && response.data.entities) {
+  //       setExtractedEntities(response.data.entities);
+  //       if (response.data.total_count === 0) {
+  //         message.info('No entities found in the current text.');
+  //       } else {
+  //         message.success(`Found ${response.data.total_count} entities.`);
+  //       }
+  //     } else {
+  //       setExtractedEntities({}); // Set to empty object to indicate no entities found
+  //       message.warning('No entities found or an error occurred during recognition.');
+  //     }
+  //   } catch (error) {
+  //     console.error('Error recognizing entities:', error);
+  //     let errorMsg = 'Failed to recognize entities.';
+  //     if (error.response && error.response.data && error.response.data.detail) {
+  //       errorMsg = error.response.data.detail;
+  //     }
+  //     message.error(errorMsg);
+  //     setExtractedEntities(null); // Set to null on error
+  //   } finally {
+  //     setIsRecognizingEntities(false);
+  //   }
+  // };
 
   const handleModalClose = () => {
     setIsModalVisible(false);
@@ -117,6 +127,124 @@ const FileUpload = () => {
     setCurrentFilenameForModal('');
     setIsExtractingText(false); // Reset states
     setIsRecognizingEntities(false);
+    // Reset graph building states as well
+    setIsBuildingGraph(false);
+    setGraphBuildProgress({ step: '', percent: 0 });
+    setGraphBuildStats(null);
+    setGraphBuildError(null);
+    setCurrentTextForGraphBuild('');
+    setCurrentEntitiesForGraphBuild(null);
+  };
+
+  const handleRecognizeEntities = async () => {
+    if (!modalContent || typeof modalContent !== 'string' || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')) {
+      message.error('Cannot recognize entities: No valid text available or text extraction failed.');
+      return;
+    }
+    setIsRecognizingEntities(true);
+    setExtractedEntities(null); // Clear previous entities
+    setGraphBuildStats(null); // Clear previous graph stats
+    setGraphBuildError(null); // Clear previous graph errors
+    setCurrentTextForGraphBuild(modalContent); // Store text for potential graph build
+
+    try {
+      const response = await axios.post(ENTITY_EXTRACT_URL, { text: modalContent });
+      if (response.data && response.data.entities) {
+        setExtractedEntities(response.data.entities);
+        setCurrentEntitiesForGraphBuild(response.data.entities); // Store entities for potential graph build
+        if (response.data.total_count === 0) {
+          message.info('No entities found in the current text.');
+        } else {
+          message.success(`Found ${response.data.total_count} entities.`);
+        }
+      } else {
+        setExtractedEntities({});
+        setCurrentEntitiesForGraphBuild({});
+        message.warning('No entities found or an error occurred during recognition.');
+      }
+    } catch (error) {
+      console.error('Error recognizing entities:', error);
+      let errorMsg = 'Failed to recognize entities.';
+      if (error.response && error.response.data && error.response.data.detail) {
+        errorMsg = error.response.data.detail;
+      }
+      message.error(errorMsg);
+      setExtractedEntities(null);
+      setCurrentEntitiesForGraphBuild(null);
+    } finally {
+      setIsRecognizingEntities(false);
+    }
+  };
+
+  const handleBuildGraph = async () => {
+    if (!currentTextForGraphBuild || !currentEntitiesForGraphBuild || Object.keys(currentEntitiesForGraphBuild).length === 0) {
+      message.error('Cannot build graph: No valid text or entities available. Please recognize entities first.');
+      return;
+    }
+    setIsBuildingGraph(true);
+    setGraphBuildProgress({ step: 'Initializing graph build...', percent: 0 });
+    setGraphBuildStats(null);
+    setGraphBuildError(null);
+
+    try {
+      // Simulate progress
+      setGraphBuildProgress({ step: 'Sending data to build graph...', percent: 10 });
+      await new Promise(resolve => setTimeout(resolve, 300)); // Short delay
+
+      const payload = {
+        text_content: currentTextForGraphBuild,
+        entities: currentEntitiesForGraphBuild,
+      };
+
+      setGraphBuildProgress({ step: 'Extracting relations and building triples...', percent: 30 });
+      const response = await axios.post(BUILD_GRAPH_URL, payload);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate work
+
+      setGraphBuildProgress({ step: 'Storing graph and finalizing...', percent: 70 });
+
+      if (response.data && response.data.message) {
+        message.success(response.data.message);
+        // Fetch full graph stats after building
+        try {
+          setGraphBuildProgress({ step: 'Fetching graph statistics...', percent: 90 });
+          const statsResponse = await axios.get(GRAPH_STATS_URL);
+          if (statsResponse.data) {
+            setGraphBuildStats(statsResponse.data);
+            message.success('Graph statistics loaded.');
+          }
+        } catch (statsError) {
+          console.error('Error fetching graph stats:', statsError);
+          setGraphBuildError('Graph built, but failed to fetch statistics.');
+          // Use summary from build response if available
+          if (response.data.graph_summary) {
+            const summary = response.data.graph_summary;
+            setGraphBuildStats({
+              node_count: summary.nodes?.length || 0,
+              edge_count: summary.edges?.length || 0,
+              graph_density: summary.nodes?.length > 1 ? (summary.edges?.length || 0) / (summary.nodes.length * (summary.nodes.length -1)) : 0
+            });
+          }
+        }
+      } else {
+        throw new Error('Unexpected response from build graph endpoint.');
+      }
+      setGraphBuildProgress({ step: 'Graph build complete.', percent: 100 });
+
+    } catch (error) {
+      console.error('Error building knowledge graph:', error);
+      let errorMsg = 'Failed to build knowledge graph.';
+      if (error.response && error.response.data && error.response.data.detail) {
+        errorMsg = error.response.data.detail;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      message.error(errorMsg);
+      setGraphBuildError(errorMsg);
+      setGraphBuildProgress({ step: 'Error occurred.', percent: 100 }); // Mark as complete even on error
+    } finally {
+      setIsBuildingGraph(false);
+      // Keep progress at 100 or error state, don't reset immediately
+    }
   };
 
   const handleFileChange = (info) => {
@@ -319,11 +447,20 @@ const FileUpload = () => {
             onClick={handleRecognizeEntities}
             loading={isRecognizingEntities}
             icon={<ExperimentOutlined />}
-            disabled={isExtractingText || !modalContent || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')}
+            disabled={isExtractingText || isBuildingGraph || !modalContent || modalContent.startsWith('Failed to extract text') || modalContent.startsWith('No text found')}
           >
             Recognize Entities
           </Button>,
-          <Button key="back" onClick={handleModalClose}>
+          <Button key="buildGraph"
+            type="primary"
+            onClick={handleBuildGraph}
+            loading={isBuildingGraph}
+            icon={<ExperimentOutlined />} // Consider a different icon, e.g., ApartmentOutlined or ShareAltOutlined
+            disabled={isExtractingText || isRecognizingEntities || isBuildingGraph || !extractedEntities || Object.keys(extractedEntities).length === 0 || Object.values(extractedEntities).every(arr => arr.length === 0)}
+          >
+            {isBuildingGraph ? 'Building Graph...' : 'Build Knowledge Graph'}
+          </Button>,
+          <Button key="back" onClick={handleModalClose} disabled={isBuildingGraph}>
             Close
           </Button>,
         ]}
@@ -356,17 +493,41 @@ const FileUpload = () => {
                 {Object.values(extractedEntities).every(arr => arr.length === 0) && !isRecognizingEntities && (
                      <Paragraph type="secondary" style={{textAlign: 'center'}}>No entities were found in the text.</Paragraph>
                 )}
-              </div>
-            )}
-            {isRecognizingEntities && (
-                <div style={{ textAlign: 'center', padding: '20px' }}>
-                    <LoadingOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
-                    <Paragraph style={{ marginTop: '8px' }}>Recognizing entities...</Paragraph>
-                </div>
-            )}
-          </>
-        )}
-      </Modal>
++                {/* Graph Building Progress and Stats Display */}
++                {(isBuildingGraph || graphBuildProgress.percent > 0 || graphBuildStats || graphBuildError) && <Divider>Knowledge Graph Construction</Divider>}
++
++                {isBuildingGraph && (
++                  <div style={{ margin: '20px 0' }}>
++                    <Progress percent={graphBuildProgress.percent} status="active" />
++                    <Paragraph style={{ textAlign: 'center', marginTop: '10px' }}>{graphBuildProgress.step}</Paragraph>
++                  </div>
++                )}
++
++                {!isBuildingGraph && graphBuildProgress.percent === 100 && !graphBuildError && graphBuildStats && (
++                  <div style={{ margin: '20px 0' }}>
++                    <Alert message="Graph built successfully!" type="success" showIcon style={{ marginBottom: '15px' }} />
++                    <Title level={5}>Graph Statistics:</Title>
++                    <List size="small">
++                      <List.Item>Nodes: <Text strong>{graphBuildStats.node_count}</Text></List.Item>
++                      <List.Item>Relationships: <Text strong>{graphBuildStats.edge_count}</Text></List.Item>
++                      <List.Item>Density: <Text strong>{graphBuildStats.graph_density?.toFixed(4) || 'N/A'}</Text></List.Item>
++                    </List>
++                  </div>
++                )}
++                 {!isBuildingGraph && graphBuildError && (
++                  <Alert message={graphBuildError} type="error" showIcon style={{ marginTop: '15px' }} />
++                )}
++              </div>
++            )}
++            {isRecognizingEntities && (
++                <div style={{ textAlign: 'center', padding: '20px' }}>
++                    <LoadingOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
++                    <Paragraph style={{ marginTop: '8px' }}>Recognizing entities...</Paragraph>
++                </div>
++            )}
++          </>
++        )}
++      </Modal>
     </div>
   );
 };
