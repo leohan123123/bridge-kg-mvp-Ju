@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Upload, message, Button, List, Typography, Progress, Space, Alert } from 'antd';
-import { InboxOutlined, FileTextOutlined, UploadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Upload, message, Button, List, Typography, Progress, Space, Alert, Modal } from 'antd';
+import { InboxOutlined, FileTextOutlined, UploadOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 import axios from '../utils/axios'; // Assuming axios is configured for backend calls
 
 const { Dragger } = Upload;
-const { Text, Link } = Typography;
+const { Text, Link, Paragraph } = Typography; // Added Paragraph
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_FILE_TYPES = ['.dxf', '.pdf', '.ifc'];
 const UPLOAD_URL = '/v1/files/upload'; // Backend endpoint
+const PDF_EXTRACT_URL = '/v1/pdf/extract'; // PDF Text Extraction endpoint
 
 const FileUpload = () => {
   const [fileList, setFileList] = useState([]);
@@ -16,6 +17,60 @@ const FileUpload = () => {
   const [overallProgress, setOverallProgress] = useState(0); // For overall progress of a batch
   const [uploadError, setUploadError] = useState(null);
   const [uploadedFilesInfo, setUploadedFilesInfo] = useState([]);
+
+  // State for PDF text extraction modal
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [modalContent, setModalContent] = useState('');
+  const [modalTitle, setModalTitle] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
+
+
+  const handleExtractText = async (fileInfo) => {
+    if (!fileInfo.filename.toLowerCase().endsWith('.pdf')) {
+      message.error('Only PDF files can have text extracted.');
+      return;
+    }
+    setIsExtracting(true);
+    setModalTitle(`Extracting text from ${fileInfo.filename}...`);
+    setModalContent(''); // Clear previous content
+    setIsModalVisible(true);
+
+    try {
+      // We need the relative path for the backend
+      // Assuming saved_path is "uploads/filename.pdf" and UPLOAD_DIR on backend is "uploads"
+      // We need to pass "filename.pdf" or the relative path from UPLOAD_DIR
+      // The `fileInfo.saved_path` might be an absolute path on the server or include the base upload dir.
+      // Let's assume `fileInfo.filename` is what the backend expects as `file_path` relative to `UPLOAD_DIR`
+      const relativePath = fileInfo.filename; // This assumes filename is unique and directly in UPLOAD_DIR
+
+      const response = await axios.post(PDF_EXTRACT_URL, { file_path: relativePath });
+      setModalTitle(`Text from ${fileInfo.filename}`);
+      if (response.data && response.data.text) {
+        setModalContent(response.data.text);
+      } else {
+        setModalContent('No text found or an error occurred during extraction.');
+      }
+    } catch (error) {
+      console.error('Error extracting PDF text:', error);
+      let errorText = 'Failed to extract text.';
+      if (error.response && error.response.data && error.response.data.detail) {
+        errorText = error.response.data.detail;
+      } else if (error.message) {
+        errorText = error.message;
+      }
+      setModalContent(errorText);
+      setModalTitle(`Error extracting text from ${fileInfo.filename}`);
+      message.error(errorText);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleModalClose = () => {
+    setIsModalVisible(false);
+    setModalContent('');
+    setModalTitle('');
+  };
 
   const handleFileChange = (info) => {
     let newFileList = [...info.fileList];
@@ -170,12 +225,23 @@ const FileUpload = () => {
             itemLayout="horizontal"
             bordered
             dataSource={uploadedFilesInfo}
-            renderItem={(item) => (
-              <List.Item
-                actions={[<CheckCircleOutlined style={{ color: 'green', fontSize: '24px' }} />]}
-              >
-                <List.Item.Meta
-                  avatar={<FileTextOutlined style={{ fontSize: '24px', color: '#1890ff' }} />}
+            renderItem={(item) => {
+              const actions = [<CheckCircleOutlined style={{ color: 'green', fontSize: '24px' }} />];
+              if (item.filename.toLowerCase().endsWith('.pdf')) {
+                actions.unshift( // Add to the beginning of actions array
+                  <Button
+                    type="link"
+                    onClick={() => handleExtractText(item)}
+                    disabled={isExtracting && modalTitle.includes(item.filename)}
+                  >
+                    {isExtracting && modalTitle.includes(item.filename) ? <LoadingOutlined /> : 'Extract Text'}
+                  </Button>
+                );
+              }
+              return (
+                <List.Item actions={actions}>
+                  <List.Item.Meta
+                    avatar={<FileTextOutlined style={{ fontSize: '24px', color: '#1890ff' }} />}
                   title={<Text strong>{item.filename}</Text>}
                   description={
                     <Space direction="vertical" size={2}>
@@ -192,6 +258,31 @@ const FileUpload = () => {
           />
         </>
       )}
+
+      <Modal
+        title={modalTitle}
+        visible={isModalVisible}
+        onOk={handleModalClose}
+        onCancel={handleModalClose}
+        width="80%"
+        style={{ top: 20 }}
+        footer={[
+          <Button key="back" onClick={handleModalClose}>
+            Close
+          </Button>,
+        ]}
+      >
+        {isExtracting && modalContent === '' ? (
+          <div style={{ textAlign: 'center', padding: '50px' }}>
+            <LoadingOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
+            <Paragraph style={{ marginTop: '10px' }}>Extracting text...</Paragraph>
+          </div>
+        ) : (
+          <Paragraph style={{ whiteSpace: 'pre-wrap', maxHeight: '60vh', overflowY: 'auto' }}>
+            {modalContent}
+          </Paragraph>
+        )}
+      </Modal>
     </div>
   );
 };
