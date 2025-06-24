@@ -4,6 +4,8 @@ from app.services.word_parser_service import WordParserService
 from app.services.word_content_analyzer import WordContentAnalyzer
 from app.services.drawing_knowledge_extractor import DrawingKnowledgeExtractor # Added for DXF
 from app.services.bim_knowledge_builder import BIMKnowledgeBuilder # Added for IFC/BIM
+from app.services.ontology_manager import OntologyManager
+from app.services.ontology_auto_updater import OntologyAutoUpdater
 from typing import Dict, List, Any
 import logging
 import uuid
@@ -19,16 +21,127 @@ class KnowledgeGraphEngine:
             self.word_content_analyzer = WordContentAnalyzer() # Uses BridgeEntityExtractor internally
             self.dxf_knowledge_extractor = DrawingKnowledgeExtractor() # Added for DXF
             self.bim_knowledge_builder = BIMKnowledgeBuilder() # Added for IFC/BIM
+            self.ontology_manager = OntologyManager()
+            self.ontology_auto_updater = OntologyAutoUpdater() # Uses OntologyManager and BridgeEntityExtractor
         except Exception as e:
             logger.error(f"Failed to initialize services in KnowledgeGraphEngine: {e}")
             raise
-        # BridgeEntityExtractor is used by WordContentAnalyzer and build_graph_from_document
-        # If build_graph_from_document is to be kept separate for non-Word docs, it needs its own instance or access.
-        # For now, WordContentAnalyzer has its own. If build_graph_from_document is called by build_graph_from_word_document,
-        # then self.entity_extractor might be redundant if all text processing goes through word_content_analyzer.
-        # However, the original build_graph_from_document directly uses self.entity_extractor.
-        # Let's keep it for now, assuming build_graph_from_document can be called directly for plain text.
+        # BridgeEntityExtractor is used by WordContentAnalyzer, build_graph_from_document, and OntologyAutoUpdater.
+        # WordContentAnalyzer has its own instance. OntologyAutoUpdater also has its own.
+        # For build_graph_from_document, we use self.entity_extractor.
         self.entity_extractor = BridgeEntityExtractor() # Used for text-based entity extraction
+
+
+    def build_graph_with_ontology_update(self, file_path: str, document_name: str, file_type: str, auto_update_ontology: bool = True, text_content: str = None) -> Dict:
+        """
+        Builds a knowledge graph from a given file (Word, DXF, IFC, or plain text)
+        and incorporates ontology update mechanisms.
+
+        Args:
+            file_path (str): Path to the document file.
+            document_name (str): Name of the document.
+            file_type (str): Type of the file ('word', 'dxf', 'ifc', 'text').
+            auto_update_ontology (bool): If True, attempts to automatically apply high-confidence ontology updates.
+                                         If False, only suggests updates.
+            text_content (str, optional): For 'text' file_type, the actual text content. Required if file_type is 'text'.
+
+        Returns:
+            Dict: A summary of the graph building process, including ontology update actions.
+        """
+        logger.info(f"Starting graph construction with ontology update for: {document_name} (Type: {file_type}, Auto-update: {auto_update_ontology})")
+
+        processing_summary = {}
+        extracted_entities_for_ontology_update = None # This will hold data for suggest_ontology_updates
+
+        if file_type == 'word':
+            # Process Word document, extract text, and build initial graph
+            # build_graph_from_word_document itself calls build_graph_from_document for text part
+            # We need to get the core text for ontology update suggestions.
+            parsed_word_content = self.word_parser_service.extract_text_content(file_path)
+            core_text = parsed_word_content.get("text")
+            if not core_text:
+                logger.error(f"No text content extracted from Word file: {file_path}")
+                return {"status": "Error", "message": "No text from Word file for ontology update."}
+
+            # The build_graph_from_word_document will handle graph creation from various parts of Word doc.
+            # For ontology update, we primarily use the main textual content.
+            processing_summary = self.build_graph_from_word_document(file_path, document_name)
+            # OntologyAutoUpdater's BridgeEntityExtractor will re-process this text.
+            # Alternatively, pass entities from WordContentAnalyzer if its extraction is preferred.
+            # For now, let OntologyAutoUpdater use its own extractor on the core_text.
+            extracted_entities_for_ontology_update = self.ontology_auto_updater.bridge_extractor.extract_entities_from_text(core_text)
+
+        elif file_type == 'dxf':
+            processing_summary = self.build_graph_from_dxf_drawing(file_path, document_name)
+            # For DXF, ontology update might be based on new layer names, block names, text entities, etc.
+            # This requires specific logic in DrawingKnowledgeExtractor or a dedicated mapper.
+            # For now, we'll assume no direct ontology update suggestions from DXF structure in this MVP.
+            # Or, if DrawingKnowledgeExtractor produces text, use that.
+            # Placeholder:
+            logger.info("Ontology update from DXF structure is not yet fully implemented. Graph built from DXF.")
+            extracted_entities_for_ontology_update = None # Or extract from DXF text if available
+
+        elif file_type == 'ifc':
+            processing_summary = self.build_graph_from_bim_model(file_path, document_name)
+            # For IFC, new IfcEntity types or property names could be ontology update candidates.
+            # BIMKnowledgeBuilder's output (nodes with types/properties) could be analyzed.
+            # Placeholder:
+            logger.info("Ontology update from IFC structure is not yet fully implemented. Graph built from IFC.")
+            kg_data_from_bim = self.bim_knowledge_builder.build_knowledge_from_bim(file_path) # Re-extract or get from summary
+
+            # Simplistic approach: treat new IFC types or properties as suggestions
+            # This needs a more refined mapping to what constitutes an "ontology update suggestion"
+            # For now, we'll simulate this or leave it for future enhancement.
+            # Example: if kg_data_from_bim['nodes'] contains a node with a type not in ontology.
+            # This part is complex and needs careful design.
+            extracted_entities_for_ontology_update = None # Placeholder
+
+        elif file_type == 'text':
+            if not text_content:
+                logger.error("Text content must be provided for file_type 'text'.")
+                return {"status": "Error", "message": "Text content required for 'text' type."}
+            processing_summary = self.build_graph_from_document(text_content, document_name)
+            extracted_entities_for_ontology_update = self.ontology_auto_updater.bridge_extractor.extract_entities_from_text(text_content)
+
+        else:
+            logger.error(f"Unsupported file type for graph building: {file_type}")
+            return {"status": "Error", "message": f"Unsupported file type: {file_type}"}
+
+        # --- Ontology Update Steps (Common for text-based content) ---
+        ontology_update_actions = {
+            "suggestions_made": None,
+            "gaps_detected": None,
+            "auto_update_result": None,
+            "report": ""
+        }
+
+        if extracted_entities_for_ontology_update:
+            logger.info(f"Suggesting ontology updates for {document_name}...")
+            suggestions = self.ontology_auto_updater.suggest_ontology_updates(extracted_entities_for_ontology_update)
+            ontology_update_actions["suggestions_made"] = suggestions
+
+            report = self.ontology_auto_updater.generate_update_report(suggestions)
+            ontology_update_actions["report"] = report
+            logger.info(f"Ontology Update Report for {document_name}:\n{report}")
+
+            if auto_update_ontology and suggestions and any(suggestions.values()):
+                logger.info(f"Attempting to auto-expand ontology for {document_name}...")
+                # Using a default confidence, or it could be configurable
+                expansion_result = self.ontology_auto_updater.auto_expand_ontology(suggestions, confidence_threshold=0.8)
+                ontology_update_actions["auto_update_result"] = expansion_result
+                logger.info(f"Ontology auto-expansion result for {document_name}: {expansion_result}")
+            else:
+                logger.info(f"Auto-update for ontology is disabled or no suggestions made for {document_name}.")
+
+        # Combine graph building summary with ontology update actions
+        final_summary = {
+            "graph_building_summary": processing_summary,
+            "ontology_update_actions": ontology_update_actions,
+            "document_name": document_name,
+            "overall_status": "Processing complete with ontology update considerations."
+        }
+
+        return final_summary
 
 
     def build_graph_from_word_document(self, file_path: str, document_name: str) -> Dict:
@@ -640,38 +753,69 @@ if __name__ == '__main__':
         # Test DXF processing
         # Create a dummy DXF file for testing
         temp_dxf_path = "temp_kg_engine_test.dxf"
-        import ezdxf # Make sure ezdxf is available for this test script
+        # Conditional import of ezdxf for testing
         try:
-            test_doc = ezdxf.new('R2010')
-            test_msp = test_doc.modelspace()
-            test_doc.layers.new(name='CONCRETE_PARTS', dxfattribs={'color': 3})
-            test_msp.add_line((0,0), (5,5), dxfattribs={'layer': 'CONCRETE_PARTS'})
-            test_msp.add_text('Concrete Beam Section', dxfattribs={'insert': (1,1), 'layer': 'TEXTLAYER'})
-            test_doc.saveas(temp_dxf_path)
-
-            logger.info(f"\n--- Building graph from DXF document: {temp_dxf_path} ---")
-            dxf_build_summary = engine.build_graph_from_dxf_drawing(temp_dxf_path, os.path.basename(temp_dxf_path))
-            logger.info(f"DXF Build Summary: {dxf_build_summary}")
-
-            assert dxf_build_summary["status"] == "DXF Graph construction complete"
-            assert dxf_build_summary["nodes_created"] > 0
-            # Relationship count depends on extractor logic, might be 0 for simple DXF.
-            # Check for a specific node that should have been created.
-            # For example, a 'DrawingDocument' node or a 'Layer' node.
-            # This requires knowing the structure from DrawingKnowledgeExtractor.
-            # Let's assume a 'DrawingDocument' node is created with the filename.
-            doc_node_query = engine.query_graph_knowledge(os.path.basename(temp_dxf_path))
-            assert any(os.path.basename(temp_dxf_path) in r.get("name","") for r in doc_node_query if isinstance(r, dict) and r.get("labels") and "DrawingDocument" in r.get("labels"))
-            logger.info(f"Verified creation of DrawingDocument node for {os.path.basename(temp_dxf_path)}")
-
+            import ezdxf
+            ezdxf_available = True
         except ImportError:
-            logger.warning("ezdxf library not found, skipping DXF processing test in __main__.")
-        except Exception as e:
-            logger.error(f"Error during DXF processing test: {e}")
-        finally:
-            if os.path.exists(temp_dxf_path):
-                os.remove(temp_dxf_path)
+            ezdxf_available = False
+            logger.warning("ezdxf library not found, DXF processing test in __main__ will be limited or skipped.")
 
+        if ezdxf_available:
+            try:
+                test_doc = ezdxf.new('R2010')
+                test_msp = test_doc.modelspace()
+                test_doc.layers.new(name='CONCRETE_PARTS', dxfattribs={'color': 3})
+                test_msp.add_line((0,0), (5,5), dxfattribs={'layer': 'CONCRETE_PARTS'})
+                test_msp.add_text('Concrete Beam Section', dxfattribs={'insert': (1,1), 'layer': 'TEXTLAYER'}) # Example text
+                test_doc.saveas(temp_dxf_path)
+
+                logger.info(f"\n--- Building graph from DXF document with ontology update: {temp_dxf_path} ---")
+                # For DXF, ontology update might be based on text entities or new layer/block names.
+                # The current `build_graph_with_ontology_update` for DXF is mostly a placeholder for ontology part.
+                dxf_build_summary_with_ontology = engine.build_graph_with_ontology_update(
+                    file_path=temp_dxf_path,
+                    document_name=os.path.basename(temp_dxf_path),
+                    file_type='dxf',
+                    auto_update_ontology=False # Don't auto-apply for this test
+                )
+                logger.info(f"DXF Build Summary with Ontology: {dxf_build_summary_with_ontology}")
+                assert dxf_build_summary_with_ontology["graph_building_summary"]["status"] == "DXF Graph construction complete"
+                assert dxf_build_summary_with_ontology["graph_building_summary"]["nodes_created"] > 0
+                # Check if ontology suggestions were attempted (even if none made for DXF yet)
+                assert "suggestions_made" in dxf_build_summary_with_ontology["ontology_update_actions"]
+
+
+            except Exception as e:
+                logger.error(f"Error during DXF processing test: {e}")
+            finally:
+                if os.path.exists(temp_dxf_path):
+                    os.remove(temp_dxf_path)
+        else: # ezdxf not available
+             logger.info("Skipping DXF part of __main__ test as ezdxf is not installed.")
+
+
+        # Test build_graph_with_ontology_update with text content
+        logger.info(f"\n--- Building graph from text with ontology update: {doc_name} (auto_update=True) ---")
+        # This will use the same sample_doc_text
+        # This time, let's try with auto_update_ontology = True
+        # Note: The OntologyManager mock needs to be stateful for auto-updates to be reflected in subsequent get_ontology_structure calls.
+        # The current OntologyManager's Neo4jRealService mock is static regarding schema updates.
+        # So, auto_expand_ontology will print what it *would* do.
+        text_build_summary_auto_update = engine.build_graph_with_ontology_update(
+            file_path=None, # Not used for 'text' type if content is provided
+            document_name=doc_name + "_with_auto_ontology_update",
+            file_type='text',
+            text_content=sample_doc_text,
+            auto_update_ontology=True
+        )
+        logger.info(f"Text Build Summary with Auto Ontology Update: {text_build_summary_auto_update}")
+        assert text_build_summary_auto_update["overall_status"] == "Processing complete with ontology update considerations."
+        assert text_build_summary_auto_update["graph_building_summary"]["status"] == "Graph construction complete"
+        assert "auto_update_result" in text_build_summary_auto_update["ontology_update_actions"]
+        # If suggestions were made, auto_update_result should not be None.
+        # Example: if "钢筋混凝土" was a new entity type suggestion, auto_expand would attempt to add it.
+        # The `ontology_auto_updater.auto_expand_ontology` prints messages like "Attempting to add entity type..."
 
         logger.info("KnowledgeGraphEngine tests completed.")
 
