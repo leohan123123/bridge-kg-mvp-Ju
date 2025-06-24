@@ -12,11 +12,19 @@ class KnowledgeGraphEngine:
             self.neo4j_service = Neo4jRealService()
         except Exception as e:
             logger.error(f"Failed to initialize Neo4jRealService in KnowledgeGraphEngine: {e}")
-            # Depending on the application's needs, either raise the exception,
-            # or set self.neo4j_service to None and handle it in methods.
-            # For now, let it raise to make the problem visible immediately.
             raise
         self.entity_extractor = BridgeEntityExtractor()
+        try:
+            # Assuming BIMKnowledgeBuilder is in the same services directory
+            from .bim_knowledge_builder import BIMKnowledgeBuilder
+            self.bim_knowledge_builder = BIMKnowledgeBuilder()
+        except ImportError:
+            logger.error("Failed to import BIMKnowledgeBuilder. Ensure it's in the correct path.")
+            self.bim_knowledge_builder = None
+        except Exception as e:
+            logger.error(f"Failed to initialize BIMKnowledgeBuilder: {e}")
+            self.bim_knowledge_builder = None
+
 
     def build_graph_from_document(self, text: str, document_name: str) -> Dict:
         """
@@ -139,6 +147,123 @@ class KnowledgeGraphEngine:
                 "error": str(e),
                 "nodes_created": 0,
                 "rels_created": 0
+            }
+
+    def build_graph_from_bim_model(self, file_path: str, document_name: str) -> Dict:
+        """
+        Builds a knowledge graph from a BIM (IFC) model file.
+        1. Uses BIMKnowledgeBuilder to parse and analyze the IFC file.
+        2. Extracts nodes (entities, spatial structures, components) and relationships.
+        3. Stores them into Neo4j.
+        4. Returns a summary of the build process.
+        """
+        logger.info(f"Starting graph construction from BIM model: {document_name} at {file_path}")
+        if not self.bim_knowledge_builder:
+            logger.error("BIMKnowledgeBuilder not initialized. Cannot process BIM model.")
+            return {"status": "Error", "message": "BIMKnowledgeBuilder not available."}
+
+        try:
+            # 1. Parse IFC and extract knowledge structure
+            # The `build_knowledge_from_bim` method returns a dict with "nodes" and "relationships" keys.
+            # Nodes: [{"id": "unique_id", "label": "NodeType", "properties": {}}]
+            # Relationships: [{"from_node_id": "X", "to_node_id": "Y", "type": "REL_TYPE", "properties": {}}]
+            kg_data = self.bim_knowledge_builder.build_knowledge_from_bim(file_path)
+
+            if not kg_data or kg_data.get("error"):
+                error_msg = kg_data.get("error", "Unknown error during BIM processing.")
+                logger.error(f"Failed to process BIM model {document_name}: {error_msg}")
+                return {"status": "Error", "document_name": document_name, "error": error_msg}
+
+            bim_nodes = kg_data.get("nodes", [])
+            bim_relationships = kg_data.get("relationships", [])
+
+            if not bim_nodes:
+                logger.warning(f"No nodes extracted from BIM model: {document_name}")
+                return {"status": "No entities found", "document_name": document_name, "nodes_created": 0, "rels_created": 0}
+
+            created_nodes_count = 0
+            # Store Neo4j internal IDs against the BIM node IDs for relationship creation
+            # The `id` in `bim_nodes` is the IFC GUID or a generated ID from BIMKnowledgeBuilder.
+            # We need to map this to the Neo4j element_id.
+            neo4j_node_ids_map = {} # Maps BIM node ID to Neo4j element ID
+
+            # 2. Store nodes into Neo4j
+            for node_data in bim_nodes:
+                node_label = node_data.get("label", "BimEntity") # Default label
+                properties = node_data.get("properties", {})
+                properties["source_document"] = document_name # Add source document tracking
+                properties["bim_id"] = node_data.get("id") # Store original BIM ID as a property
+
+                # Using create_bridge_entity which expects entity_type (label) and properties.
+                # It generates its own UUID for the node if one isn't in properties.
+                # It returns the 'elementId' of the created node.
+                # We need to ensure properties['name'] is set if create_bridge_entity relies on it for uniqueness checks
+                # or if we want a human-readable primary display key. If not present, it might use bim_id.
+                if 'name' not in properties and 'bim_id' in properties:
+                    properties['name'] = properties['bim_id'] # Use bim_id as name if no other name
+
+                node_element_id = self.neo4j_service.create_bridge_entity(entity_type=node_label, properties=properties)
+
+                if node_element_id:
+                    original_bim_id = node_data.get("id")
+                    neo4j_node_ids_map[original_bim_id] = node_element_id
+                    created_nodes_count += 1
+                    logger.debug(f"Created '{node_label}' node from BIM: {properties.get('name')} with Neo4j Element ID: {node_element_id}")
+                else:
+                    logger.error(f"Failed to create '{node_label}' node from BIM: {properties.get('name')}")
+
+            logger.info(f"Processed {created_nodes_count} nodes from BIM model: {document_name}")
+
+            # 3. Store relationships into Neo4j
+            created_rels_count = 0
+            if not bim_relationships:
+                logger.info(f"No relationships extracted or to be created from BIM model: {document_name}")
+            else:
+                logger.info(f"Attempting to create {len(bim_relationships)} relationships from BIM model: {document_name}")
+                for rel_data in bim_relationships:
+                    from_node_bim_id = rel_data.get("from_node_id")
+                    to_node_bim_id = rel_data.get("to_node_id")
+                    rel_type = rel_data.get("type", "RELATED_TO").upper().replace(" ", "_")
+                    rel_properties = rel_data.get("properties", {})
+                    rel_properties["source_document"] = document_name
+
+                    start_node_element_id = neo4j_node_ids_map.get(from_node_bim_id)
+                    end_node_element_id = neo4j_node_ids_map.get(to_node_bim_id)
+
+                    if start_node_element_id and end_node_element_id:
+                        success = self.neo4j_service.create_relationship_by_element_ids(
+                            start_node_element_id=start_node_element_id,
+                            end_node_element_id=end_node_element_id,
+                            rel_type=rel_type,
+                            properties=rel_properties
+                        )
+                        if success:
+                            created_rels_count += 1
+                            logger.debug(f"Created BIM relationship: ({from_node_bim_id})-[{rel_type}]->({to_node_bim_id})")
+                        else:
+                            logger.error(f"Failed to create BIM relationship: ({from_node_bim_id})-[{rel_type}]->({to_node_bim_id})")
+                    else:
+                        logger.warning(f"Skipping BIM relationship due to missing Neo4j node ID(s): From_ID: {from_node_bim_id} (Neo4j: {start_node_element_id}), To_ID: {to_node_bim_id} (Neo4j: {end_node_element_id})")
+
+            logger.info(f"Successfully created {created_rels_count} relationships from BIM model: {document_name}")
+
+            return {
+                "status": "BIM Graph construction complete",
+                "document_name": document_name,
+                "file_path": file_path,
+                "nodes_extracted_from_bim": len(bim_nodes),
+                "nodes_created_in_db": created_nodes_count,
+                "relationships_extracted_from_bim": len(bim_relationships),
+                "relationships_created_in_db": created_rels_count,
+                "bim_metadata": kg_data.get("metadata") # Pass through metadata from parser
+            }
+
+        except Exception as e:
+            logger.exception(f"Error during BIM graph construction for {document_name}: {e}")
+            return {
+                "status": "Error during BIM graph construction",
+                "document_name": document_name,
+                "error": str(e)
             }
 
     def query_graph_knowledge(self, query: str) -> List[Dict]:
