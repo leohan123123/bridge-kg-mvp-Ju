@@ -13,6 +13,7 @@ const { Title } = Typography;
 const HomePage = lazy(() => import('./pages/HomePage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const KnowledgeQueryPage = lazy(() => import('./pages/KnowledgeQuery')); // 新增知识图谱查询页面
+const FileUploadPage = lazy(() => import('./pages/FileUpload')); // 新增文件上传页面
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage')); // 404页面
 
 const App: React.FC = () => {
@@ -24,8 +25,9 @@ const App: React.FC = () => {
   const menuItems = [
     { key: '1', label: <Link to="/">首页</Link> },
     { key: '2', label: <Link to="/knowledge-query">知识查询</Link> },
-    { key: '3', label: <Link to="/ai-assistant">AI 助手</Link> }, // 新增 AI 助手菜单项
-    { key: '4', label: <Link to="/about">关于</Link> },
+    { key: '3', label: <Link to="/ai-assistant">AI 助手</Link> },
+    { key: '4', label: <Link to="/file-upload">文件上传</Link> }, // 新增文件上传菜单项
+    { key: '5', label: <Link to="/about">关于</Link> },
     // 添加更多导航项
   ];
 
@@ -64,7 +66,8 @@ const App: React.FC = () => {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />
                   <Route path="/knowledge-query" element={<KnowledgeQueryPage />} />
-                  <Route path="/ai-assistant" element={<AIChatInterface />} /> {/* 新增 AI 助手路由 */}
+                  <Route path="/ai-assistant" element={<AIChatInterface />} /> {/* AI 助手路由 */}
+                  <Route path="/file-upload" element={<FileUploadPage />} /> {/* 新增文件上传路由 */}
                   {/* 404 Not Found 路由应该放在最后 */}
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
