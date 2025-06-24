@@ -51,55 +51,78 @@ class KnowledgeGraphEngine:
                 }
 
             # 2. Analyze professional content to guess document type and extract specific features
-            # This is a placeholder for intelligent document type detection.
-            # For now, we'll use a heuristic or a default. Let's assume 'technical_standard' as a common case.
-            # A more advanced system would use ML or rules based on metadata, structure, keywords.
-            document_type_guess = "technical_standard" # Default guess
+            # Extract headers and sections for context and potential use in analyzers
+            sections_data = self.word_parser_service.extract_headers_and_sections(file_path)
+            if sections_data.get("error"):
+                logger.warning(f"Could not extract sections from {document_name}: {sections_data.get('error')}")
+                sections_data = None # Proceed without section data if extraction fails
 
-            # Example: Use WordContentAnalyzer based on the guessed type.
-            # The analyzer methods currently return entities; this might be redundant if build_graph_from_document
-            # re-extracts entities from the same text. The primary value of analyzers here would be
-            # for type-specific information (clauses, formulas, etc.) or specialized entity lists.
-            # For now, let's say analysis provides context or can guide further steps.
-            if document_type_guess == "technical_standard":
-                analysis_summary = self.word_content_analyzer.analyze_technical_standard(parsed_content)
-            elif document_type_guess == "design_specification":
-                analysis_summary = self.word_content_analyzer.analyze_design_specification(parsed_content)
-            elif document_type_guess == "construction_manual":
-                analysis_summary = self.word_content_analyzer.analyze_construction_manual(parsed_content)
-            else:
-                analysis_summary = {"info": "No specific analyzer run, using generic extraction."}
+            # 2. Analyze professional content
+            # Identify document type
+            identified_doc_type = self.word_content_analyzer.identify_document_type(
+                text_content_dict=parsed_content,
+                tables=tables,
+                sections=sections_data
+            )
+            logger.info(f"Identified document type for {document_name} as: {identified_doc_type}")
+
+            # Perform analysis based on identified type
+            specific_analysis_results = None
+            if identified_doc_type == "Technical Standard":
+                specific_analysis_results = self.word_content_analyzer.analyze_technical_standard(parsed_content, sections_data)
+            elif identified_doc_type == "Design Specification":
+                specific_analysis_results = self.word_content_analyzer.analyze_design_specification(parsed_content, sections_data)
+            elif identified_doc_type == "Construction Manual":
+                specific_analysis_results = self.word_content_analyzer.analyze_construction_manual(parsed_content, sections_data)
+            else: # Default or Unknown
+                logger.info(f"No specific analyzer for document type '{identified_doc_type}'. Performing generic entity extraction.")
+                # Basic entity extraction if type is unknown or general
+                specific_analysis_results = {"info": f"Generic analysis for document type: {identified_doc_type}",
+                                             "extracted_entities": self.entity_extractor.extract_professional_entities(text_for_extraction),
+                                             "extracted_relations": [] # Basic extract_professional_entities doesn't do relations.
+                                             }
 
 
-            # Extract technical parameters from tables using WordContentAnalyzer
-            technical_parameters_report = self.word_content_analyzer.extract_technical_parameters(tables)
+            # Extract technical parameters from tables
+            table_parameters_extraction = self.word_content_analyzer.extract_technical_parameters(tables)
 
-            # TODO: Integrate technical_parameters_from_tables into the knowledge graph.
-            # This could involve creating new nodes for parameters, linking them to components,
-            # or adding them as properties. This is a significant modeling decision.
-            # For MVP, we log them and include in the report. Future work to make them graph elements.
-            logger.info(f"Extracted {len(technical_parameters_report.get('extracted_parameters_summary',[]))} potential parameters from tables in {document_name}.")
+            # TODO: Integrate extracted table parameters and specific analysis results (clauses, formulas, etc.)
+            # into the knowledge graph. This involves creating appropriate nodes and relationships.
+            # For now, these results will be part of the summary.
+            # Example: Create "Parameter" nodes, "Clause" nodes, etc.
 
-            # 3. & 4. Build graph using the main text content via existing method
-            # Pass the determined/guessed document type.
+            # For MVP, we primarily rely on build_graph_from_document for general entity/relation graph creation.
+            # The specialized extractions (clauses, table params) are logged and returned in summary.
+            # Future: These specialized items should become distinct graph elements.
+
+            logger.info(f"Extracted parameters from tables in {document_name}: { {k: len(v) for k, v in table_parameters_extraction.items()} }")
+
+            # 3. & 4. Build base graph using the main text content via existing method
             graph_build_summary = self.build_graph_from_document(
                 text=text_for_extraction,
                 document_name=document_name,
-                document_type=document_type_guess # Pass the guessed type
+                document_type=identified_doc_type # Pass the identified type
             )
 
             # Enhance the summary with Word-specific processing information
             graph_build_summary["word_document_path"] = file_path
             graph_build_summary["word_metadata"] = parsed_content.get("metadata", {})
+            graph_build_summary["identified_document_type"] = identified_doc_type
+            graph_build_summary["specific_analysis_summary"] = specific_analysis_results # Includes entities/relations from analyzer
             graph_build_summary["tables_summary"] = {
-                "table_count": len(tables),
-                "technical_parameters_found": len(technical_parameters_report.get("extracted_parameters_summary", [])),
-                "parameters_details": technical_parameters_report.get("extracted_parameters_summary", []) # Could be verbose
+                "table_count": len(tables) if isinstance(tables, list) and not (tables and tables[0].get("error")) else 0,
+                "parameter_extraction_summary": {k: len(v) for k, v in table_parameters_extraction.items()}
+                # "parameter_details": table_parameters_extraction # Can be very verbose
             }
-            graph_build_summary["content_analysis_type_applied"] = document_type_guess
-            graph_build_summary["content_analysis_summary"] = analysis_summary # Contains entities from analyzer run
 
-            logger.info(f"Successfully processed Word document {document_name} for graph construction. Base graph built, parameters extracted.")
+            # Log the specialized info that's not yet fully in graph (MVP)
+            if specific_analysis_results:
+                if "clauses" in specific_analysis_results and specific_analysis_results["clauses"]:
+                    logger.info(f"Found {len(specific_analysis_results['clauses'])} clauses/articles in {document_name}.")
+                if "calculation_formulas" in specific_analysis_results and specific_analysis_results["calculation_formulas"]:
+                    logger.info(f"Found {len(specific_analysis_results['calculation_formulas'])} potential formulas in {document_name}.")
+
+            logger.info(f"Successfully processed Word document {document_name} for graph construction. Base graph built, specialized content analyzed.")
             return graph_build_summary
 
         except Exception as e:
