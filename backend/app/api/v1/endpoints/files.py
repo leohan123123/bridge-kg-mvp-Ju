@@ -13,6 +13,7 @@ from app.services.word_parser_service import WordParserService
 # and KnowledgeGraphEngine handles the deeper analysis.
 # from app.services.word_content_analyzer import WordContentAnalyzer
 from app.services.drawing_knowledge_extractor import DrawingKnowledgeExtractor
+from app.services.bim_knowledge_builder import BIMKnowledgeBuilder
 
 
 router = APIRouter()
@@ -24,6 +25,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 ALLOWED_EXTENSIONS = {".dxf", ".pdf", ".ifc", ".doc", ".docx"}
 WORD_EXTENSIONS = {".doc", ".docx"}
 DXF_EXTENSIONS = {".dxf"}
+IFC_EXTENSIONS = {".ifc"}
 
 # Create upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -103,6 +105,46 @@ def process_dxf_file(file_path: str) -> Dict:
         # Raise HTTPException for unexpected errors to ensure a proper FastAPI response
         raise HTTPException(status_code=500, detail=f"Unexpected error processing DXF file {os.path.basename(file_path)}: {str(e)}")
 
+# Helper function to process IFC files
+def process_ifc_file(file_path: str) -> Dict:
+    """
+    Processes an IFC BIM file using BIMKnowledgeBuilder.
+    """
+    try:
+        builder = BIMKnowledgeBuilder()
+        # This call is synchronous. For very large IFC files, consider background tasks.
+        knowledge_data = builder.build_knowledge_from_bim(file_path)
+
+        if knowledge_data.get("error"):
+            logger.error(f"Error processing IFC file {file_path}: {knowledge_data['error']}")
+            return {
+                "status": "error",
+                "message": f"Failed to process IFC file: {knowledge_data['error']}",
+                "filename": os.path.basename(file_path),
+                "detail": knowledge_data['error']
+            }
+
+        # Return a summary of the extracted knowledge graph
+        return {
+            "status": "success",
+            "message": "IFC file processed and knowledge graph built.",
+            "filename": os.path.basename(file_path),
+            "knowledge_graph_summary": {
+                "nodes_count": len(knowledge_data.get("nodes", [])),
+                "relationships_count": len(knowledge_data.get("relationships", []))
+            },
+            # Optionally, include parts of the graph if small, or specific insights
+            # "project_name": next((n['properties'].get('name') for n in knowledge_data.get("nodes", []) if n['type'] == 'Project'), None)
+        }
+    except HTTPException as http_exc:
+        logger.error(f"HTTPException during IFC file processing for {file_path}: {http_exc.detail}")
+        raise http_exc # Re-raise if it's already an HTTPException
+    except Exception as e:
+        logger.error(f"Unexpected error processing IFC file {file_path}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Unexpected error processing IFC file {os.path.basename(file_path)}: {str(e)}")
+
 
 @router.post("/upload", response_model=List[FileUploadResponse])
 async def upload_files(files: List[UploadFile] = File(...)):
@@ -166,13 +208,22 @@ async def upload_files(files: List[UploadFile] = File(...)):
                     logger.error(f"Generic error while processing DXF file {filename}: {str(e)}")
                     processing_data = {"status": "error", "detail": f"Failed to process: {str(e)}", "filename": filename}
 
-            # Placeholder for other file types (PDF, IFC)
+            elif file_ext in IFC_EXTENSIONS:
+                logger.info(f"Processing IFC file: {filename}")
+                try:
+                    processing_data = process_ifc_file(file_path)
+                except HTTPException as http_exc:
+                    logger.error(f"HTTPException while processing IFC file {filename}: {http_exc.detail}")
+                    processing_data = {"status": "error", "detail": http_exc.detail, "filename": filename}
+                except Exception as e:
+                    logger.error(f"Generic error while processing IFC file {filename}: {str(e)}")
+                    processing_data = {"status": "error", "detail": f"Failed to process: {str(e)}", "filename": filename}
+
+
+            # Placeholder for other file types (PDF)
             # elif file_ext == ".pdf":
             #     logger.info(f"PDF file {filename} received. Processing not yet implemented.")
             #     processing_data = {"status": "pending", "message": "PDF processing not implemented."}
-            # elif file_ext == ".ifc":
-            #     logger.info(f"IFC file {filename} received. Processing not yet implemented.")
-            #     processing_data = {"status": "pending", "message": "IFC processing not implemented."}
 
 
             file_info = FileUploadResponse(
