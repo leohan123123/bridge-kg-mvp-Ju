@@ -16,7 +16,7 @@ const HomePage: React.FC = () => {
     setLoading(true);
     try {
       // 注意：apiClient 默认返回 response.data，所以类型直接是 HealthStatus
-      const response = await apiClient.get<HealthStatus>('/health');
+      const response = await apiClient.get<HealthStatus>('/health/health');
       if (response && response.status === 'ok') {
         setBackendStatus('后端服务正常');
         message.success('成功连接到后端服务！');

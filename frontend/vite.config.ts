@@ -14,7 +14,6 @@ export default defineConfig({
       '/api': {
         target: 'http://backend:8000', // 代理到后端服务，docker-compose中的服务名
         changeOrigin: true, // 需要虚拟主机站点
-        rewrite: (path) => path.replace(/^\/api/, '') // 可选：重写路径，去掉/api前缀
       },
     },
     hmr: {

@@ -1,6 +1,6 @@
 services:
   frontend:
-    # 开发环境配置:
+    # 开发环境配置
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
@@ -11,12 +11,12 @@ services:
       - /app/node_modules # 隔离node_modules，防止本地覆盖容器内的
     environment:
       - NODE_ENV=development
-      # - VITE_API_BASE_URL=/api # Vite代理已配置，前端直接请求/api即可。如果需要此变量，应设为/api
+      # - VITE_API_BASE_URL=/api # Vite代理已配置，前端直接请求/api即可。如果需要此变量，应设置为/api
     depends_on:
       - backend
     networks:
       - app-network
-    # command: npm run dev # Dockerfile.dev 中已有默认 CMD
+    # command: npm run dev # Dockerfile.dev 中已有默认CMD
 
     # 生产环境配置 (示例, 通常会使用 override 文件或 profile):
     # build:
@@ -39,14 +39,16 @@ services:
       - ./.env # 加载根目录的 .env 文件
     environment:
       # PYTHONUNBUFFERED 和 PYTHONPATH 通常在 Dockerfile 中设置
-      - DEBUG=${DEBUG:-True} # 从 .env 读取 DEBUG, 默认为 True
+      - DEBUG=${DEBUG:-True} # 从.env 读取 DEBUG, 默认为 True
+      - OLLAMA_API_URL=${OLLAMA_API_URL:-http://localhost:11434/api/chat}
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-qwen2:0.5b}
     depends_on:
       - neo4j
     networks:
       - app-network
     # 开发模式下使用 uvicorn --reload
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    # 生产模式下 (示例, 可能用 Gunicorn):
+    # 生产模式中 (示例, 可能用 Gunicorn):
     # command: gunicorn -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:8000 app.main:app
 
   neo4j:

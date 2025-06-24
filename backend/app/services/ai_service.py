@@ -37,7 +37,7 @@ async def get_ollama_chat_response(
     Raises:
         OllamaError: If the API request fails or returns an error.
     """
-    api_url = ollama_api_url or getattr(settings, 'OLLAMA_API_URL', DEFAULT_OLLAMA_API_URL)
+    api_url = ollama_api_url or str(getattr(settings, 'OLLAMA_API_URL', DEFAULT_OLLAMA_API_URL))
     selected_model = model or getattr(settings, 'OLLAMA_DEFAULT_MODEL', DEFAULT_MODEL)
 
     system_prompt = "You are a helpful assistant."

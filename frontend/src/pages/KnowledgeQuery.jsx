@@ -23,7 +23,7 @@ const KnowledgeQuery = () => {
     setLoading(true);
     setTableData([]); // Clear previous data
     try {
-      const response = await axios.get(`/api/v1/knowledge/nodes/${nodeType}`);
+      const response = await axios.get(`/knowledge/nodes/${nodeType}`);
       if (response.data && response.data.length > 0) {
         // Dynamically create columns based on the keys of the first object
         const firstItemKeys = Object.keys(response.data[0]);
