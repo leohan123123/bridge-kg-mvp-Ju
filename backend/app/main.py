@@ -75,6 +75,7 @@ from .api.v1.endpoints import ai as ai_endpoint # Import the new AI router
 from .api.v1.endpoints import files as files_v1_endpoint # Import the new files router
 from .api.v1.endpoints import pdf as pdf_endpoint # Import the new PDF router
 from .api.v1.endpoints import entities as entities_endpoint # Import the new entities router
+from .api.v1.endpoints import simple_qa as simple_qa_endpoint # Import the new Simple QA router
 
 app.include_router(files_endpoint.router, prefix=f"{settings.API_PREFIX}/files", tags=["Files"]) # Legacy file operations
 app.include_router(preprocessing_endpoint.router, prefix=f"{settings.API_PREFIX}/preprocessing", tags=["Preprocessing"])
@@ -84,6 +85,7 @@ app.include_router(ai_endpoint.router, prefix=f"{settings.API_PREFIX}/v1/ai", ta
 app.include_router(files_v1_endpoint.router, prefix=f"{settings.API_PREFIX}/v1/files", tags=["File Upload V1"]) # Add new File Upload router with /v1
 app.include_router(pdf_endpoint.router, prefix=f"{settings.API_PREFIX}/v1/pdf", tags=["PDF Processing"]) # Add PDF Processing router
 app.include_router(entities_endpoint.router, prefix=f"{settings.API_PREFIX}/v1/entities", tags=["Entity Recognition"]) # Add Entity Recognition router
+app.include_router(simple_qa_endpoint.router, prefix=f"{settings.API_PREFIX}/v1/qa", tags=["Simple QA"]) # Add Simple QA router
 
 
 # 根路径 (可选)
