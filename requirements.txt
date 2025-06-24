@@ -1,1 +1,2 @@
 ezdxf==1.1.4  # DXF文件解析
+ifcopenshell==0.7.0.240406  # IFC文件解析
