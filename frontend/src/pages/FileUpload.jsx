@@ -8,7 +8,7 @@ const { Text, Link } = Typography;
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_FILE_TYPES = ['.dxf', '.pdf', '.ifc'];
-const UPLOAD_URL = '/api/v1/files/upload'; // Backend endpoint
+const UPLOAD_URL = '/v1/files/upload'; // Backend endpoint
 
 const FileUpload = () => {
   const [fileList, setFileList] = useState([]);
