@@ -12,6 +12,7 @@ from app.services.word_parser_service import WordParserService
 # WordContentAnalyzer might not be directly called here if process_word_document is simple
 # and KnowledgeGraphEngine handles the deeper analysis.
 # from app.services.word_content_analyzer import WordContentAnalyzer
+from app.services.drawing_knowledge_extractor import DrawingKnowledgeExtractor
 
 
 router = APIRouter()
@@ -22,6 +23,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 # Updated ALLOWED_EXTENSIONS
 ALLOWED_EXTENSIONS = {".dxf", ".pdf", ".ifc", ".doc", ".docx"}
 WORD_EXTENSIONS = {".doc", ".docx"}
+DXF_EXTENSIONS = {".dxf"}
 
 # Create upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -32,25 +34,17 @@ class FileUploadResponse(BaseModel):
     size: int
     saved_path: str
     uploaded_at: datetime.datetime
-    processing_result: Dict = None # To include results from process_word_document
+    processing_result: Dict = None # To include results from processing functions
 
 # Helper function to process Word documents
 def process_word_document(file_path: str) -> Dict:
     """
     Processes a Word document using WordParserService.
-    This is a simplified version. In a real scenario, you might also call WordContentAnalyzer
-    or this logic could be deeper within a service like KnowledgeGraphEngine.
     """
     try:
         parser = WordParserService()
-        # Basic extraction. More detailed analysis might be needed depending on requirements.
         text_content = parser.extract_text_content(file_path)
         tables = parser.extract_tables(file_path)
-        # Headers and images could also be extracted if needed at this stage
-        # headers = parser.extract_headers_and_sections(file_path)
-        # images = parser.extract_images_info(file_path)
-
-        # For now, return a summary. The KnowledgeGraphEngine will do more detailed analysis.
         return {
             "status": "success",
             "message": "Word document parsed. Basic content extracted.",
@@ -58,17 +52,56 @@ def process_word_document(file_path: str) -> Dict:
             "text_snippet": text_content.get("text", "")[:200] + "..." if text_content.get("text") else "N/A",
             "metadata": text_content.get("metadata", {}),
             "table_count": len(tables),
-            # "header_count": len(headers.get("headers", [])),
-            # "image_count": len(images)
         }
-    except HTTPException as http_exc: # Catch HTTPExceptions from parser
+    except HTTPException as http_exc:
         logger.error(f"HTTPException during Word document processing for {file_path}: {http_exc.detail}")
-        raise http_exc # Re-raise to be handled by FastAPI
+        raise http_exc
     except Exception as e:
         logger.error(f"Error processing Word document {file_path}: {e}")
-        # Return an error structure or raise HTTPException
-        # Raising HTTPException is consistent with other error handling in this file
         raise HTTPException(status_code=500, detail=f"Failed to process Word document {os.path.basename(file_path)}: {str(e)}")
+
+# Helper function to process DXF documents
+def process_dxf_file(file_path: str) -> Dict:
+    """
+    Processes a DXF drawing file using DrawingKnowledgeExtractor.
+    """
+    try:
+        extractor = DrawingKnowledgeExtractor()
+        # The extractor returns a comprehensive dictionary including errors if any.
+        knowledge_data = extractor.extract_knowledge_from_drawing(file_path)
+
+        if knowledge_data.get("error"):
+            logger.error(f"Error processing DXF file {file_path}: {knowledge_data['error']}")
+            # We could raise HTTPException here, but extractor already provides an error structure.
+            # For consistency in FileUploadResponse, let's ensure processing_result reflects this.
+            return {
+                "status": "error",
+                "message": f"Failed to process DXF file: {knowledge_data['error']}",
+                "filename": os.path.basename(file_path),
+                "detail": knowledge_data['error']
+            }
+
+        # Return a summary or the full extracted knowledge as needed
+        # For now, let's return a success status and the main parts of the extracted data.
+        return {
+            "status": "success",
+            "message": "DXF file processed and knowledge extracted.",
+            "filename": os.path.basename(file_path),
+            "document_info": knowledge_data.get("document_info"),
+            "analysis_summary": knowledge_data.get("analysis_summary"),
+            # Optionally include "knowledge_graph" or "raw_parsed_data" if the frontend needs it directly
+            # "knowledge_graph_summary": {
+            #     "nodes_count": len(knowledge_data.get("knowledge_graph", {}).get("nodes", [])),
+            #     "edges_count": len(knowledge_data.get("knowledge_graph", {}).get("edges", []))
+            # }
+        }
+    except HTTPException as http_exc: # Catch any HTTPExceptions raised within the extractor flow if any
+        logger.error(f"HTTPException during DXF file processing for {file_path}: {http_exc.detail}")
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Unexpected error processing DXF file {file_path}: {e}")
+        # Raise HTTPException for unexpected errors to ensure a proper FastAPI response
+        raise HTTPException(status_code=500, detail=f"Unexpected error processing DXF file {os.path.basename(file_path)}: {str(e)}")
 
 
 @router.post("/upload", response_model=List[FileUploadResponse])
@@ -109,21 +142,37 @@ async def upload_files(files: List[UploadFile] = File(...)):
             uploaded_at = datetime.datetime.now()
             processing_data = None
 
-            # If it's a Word document, call process_word_document
+            # Process file based on extension
             if file_ext in WORD_EXTENSIONS:
                 logger.info(f"Processing Word document: {filename}")
                 try:
-                    # This call is synchronous. For long parsing tasks, consider background tasks.
                     processing_data = process_word_document(file_path)
-                except HTTPException as http_exc: # Catch specific HTTP errors from processing
+                except HTTPException as http_exc:
                     logger.error(f"HTTPException while processing Word file {filename}: {http_exc.detail}")
-                    # We might want to decide if a processing failure for one file fails the whole upload batch
-                    # or if it just logs error for that file and continues.
-                    # For now, let it be part of the response for that file.
                     processing_data = {"status": "error", "detail": http_exc.detail, "filename": filename}
                 except Exception as e:
                     logger.error(f"Generic error while processing Word file {filename}: {str(e)}")
                     processing_data = {"status": "error", "detail": f"Failed to process: {str(e)}", "filename": filename}
+
+            elif file_ext in DXF_EXTENSIONS:
+                logger.info(f"Processing DXF file: {filename}")
+                try:
+                    # This call is synchronous. For long parsing tasks, consider background tasks.
+                    processing_data = process_dxf_file(file_path)
+                except HTTPException as http_exc:
+                    logger.error(f"HTTPException while processing DXF file {filename}: {http_exc.detail}")
+                    processing_data = {"status": "error", "detail": http_exc.detail, "filename": filename}
+                except Exception as e:
+                    logger.error(f"Generic error while processing DXF file {filename}: {str(e)}")
+                    processing_data = {"status": "error", "detail": f"Failed to process: {str(e)}", "filename": filename}
+
+            # Placeholder for other file types (PDF, IFC)
+            # elif file_ext == ".pdf":
+            #     logger.info(f"PDF file {filename} received. Processing not yet implemented.")
+            #     processing_data = {"status": "pending", "message": "PDF processing not implemented."}
+            # elif file_ext == ".ifc":
+            #     logger.info(f"IFC file {filename} received. Processing not yet implemented.")
+            #     processing_data = {"status": "pending", "message": "IFC processing not implemented."}
 
 
             file_info = FileUploadResponse(

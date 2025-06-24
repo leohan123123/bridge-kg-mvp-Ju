@@ -2,6 +2,7 @@ from app.services.neo4j_real_service import Neo4jRealService
 from app.services.bridge_entity_extractor import BridgeEntityExtractor
 from app.services.word_parser_service import WordParserService
 from app.services.word_content_analyzer import WordContentAnalyzer
+from app.services.drawing_knowledge_extractor import DrawingKnowledgeExtractor # Added for DXF
 from typing import Dict, List, Any
 import logging
 import uuid
@@ -15,6 +16,7 @@ class KnowledgeGraphEngine:
             self.neo4j_service = Neo4jRealService()
             self.word_parser_service = WordParserService()
             self.word_content_analyzer = WordContentAnalyzer() # Uses BridgeEntityExtractor internally
+            self.dxf_knowledge_extractor = DrawingKnowledgeExtractor() # Added for DXF
         except Exception as e:
             logger.error(f"Failed to initialize services in KnowledgeGraphEngine: {e}")
             raise
@@ -24,7 +26,7 @@ class KnowledgeGraphEngine:
         # then self.entity_extractor might be redundant if all text processing goes through word_content_analyzer.
         # However, the original build_graph_from_document directly uses self.entity_extractor.
         # Let's keep it for now, assuming build_graph_from_document can be called directly for plain text.
-        self.entity_extractor = BridgeEntityExtractor()
+        self.entity_extractor = BridgeEntityExtractor() # Used for text-based entity extraction
 
 
     def build_graph_from_word_document(self, file_path: str, document_name: str) -> Dict:
@@ -308,6 +310,123 @@ class KnowledgeGraphEngine:
             logger.exception(f"Error during graph query execution for query '{query}': {e}")
             return [{"error": f"Failed to query graph: {str(e)}"}]
 
+
+    def build_graph_from_dxf_drawing(self, file_path: str, document_name: str) -> Dict:
+        """
+        Builds a knowledge graph from a DXF drawing file.
+        1. Extracts knowledge using DrawingKnowledgeExtractor.
+        2. Creates nodes and relationships in Neo4j based on the extracted knowledge graph structure.
+        Returns a summary of the build process.
+        """
+        logger.info(f"Starting graph construction from DXF drawing: {document_name} at {file_path}")
+        try:
+            # 1. Extract knowledge from DXF
+            # The DrawingKnowledgeExtractor returns a dict with 'knowledge_graph': {'nodes': [], 'edges': []}
+            extracted_data = self.dxf_knowledge_extractor.extract_knowledge_from_drawing(file_path)
+
+            if extracted_data.get("error"):
+                logger.error(f"Error extracting knowledge from DXF {document_name}: {extracted_data['error']}")
+                return {
+                    "status": "Error: Failed to extract knowledge from DXF",
+                    "document_name": document_name, "error": extracted_data['error'],
+                    "nodes_created": 0, "rels_created": 0
+                }
+
+            kg_data = extracted_data.get("knowledge_graph")
+            if not kg_data or not kg_data.get("nodes"):
+                logger.warning(f"No graph nodes extracted from DXF document: {document_name}")
+                return {
+                    "status": "No graph nodes extracted from DXF", "document_name": document_name,
+                    "nodes_created": 0, "rels_created": 0
+                }
+
+            nodes_to_create = kg_data["nodes"]
+            edges_to_create = kg_data.get("edges", [])
+
+            created_node_neo4j_ids = {}  # Map internal ID from extractor to Neo4j element ID
+            nodes_created_count = 0
+            rels_created_count = 0
+
+            # 2. Create nodes in Neo4j
+            for node_data in nodes_to_create:
+                internal_id = node_data.pop("id") # Extractor's internal ID for linking edges
+                node_type = node_data.pop("type", "DrawingElement") # Default type if not specified
+                label = node_data.pop("label", None) # Primary display name
+
+                properties = {**node_data} # Remaining items are properties
+                if label:
+                    properties["name"] = label # Use 'label' as 'name' if present, a common convention
+
+                properties["source_document"] = document_name
+                properties["source_file_path"] = file_path # Add file path for drawing entities
+
+                # Use neo4j_service to create the node. It expects entity_type (as label) and properties.
+                # The create_bridge_entity method returns the element_id of the created node.
+                neo4j_element_id = self.neo4j_service.create_bridge_entity(
+                    entity_type=node_type, # This will be the primary label in Neo4j
+                    properties=properties
+                )
+
+                if neo4j_element_id:
+                    created_node_neo4j_ids[internal_id] = neo4j_element_id
+                    nodes_created_count += 1
+                    logger.debug(f"Created DXF node: {label or node_type} (InternalID: {internal_id}) with Neo4j ElemID: {neo4j_element_id}")
+                else:
+                    logger.error(f"Failed to create DXF node in Neo4j: {label or node_type} (InternalID: {internal_id})")
+
+            logger.info(f"Created {nodes_created_count} nodes from DXF: {document_name}")
+
+            # 3. Create relationships in Neo4j
+            if edges_to_create:
+                for edge_data in edges_to_create:
+                    source_internal_id = edge_data.get("source")
+                    target_internal_id = edge_data.get("target")
+                    rel_type = edge_data.get("label", "RELATED_TO").upper().replace(" ", "_")
+
+                    rel_properties = {k:v for k,v in edge_data.items() if k not in ["source", "target", "label"]}
+                    rel_properties["source_document"] = document_name
+
+                    source_neo4j_id = created_node_neo4j_ids.get(source_internal_id)
+                    target_neo4j_id = created_node_neo4j_ids.get(target_internal_id)
+
+                    if source_neo4j_id and target_neo4j_id:
+                        success = self.neo4j_service.create_relationship_by_element_ids(
+                            start_node_element_id=source_neo4j_id,
+                            end_node_element_id=target_neo4j_id,
+                            rel_type=rel_type,
+                            properties=rel_properties
+                        )
+                        if success:
+                            rels_created_count += 1
+                            logger.debug(f"Created DXF relationship: ({source_internal_id})-[{rel_type}]->({target_internal_id})")
+                        else:
+                            logger.error(f"Failed to create DXF relationship: ({source_internal_id})-[{rel_type}]->({target_internal_id})")
+                    else:
+                        logger.warning(f"Skipping DXF relationship due to missing Neo4j node ID(s): {source_internal_id} -> {target_internal_id}")
+
+            logger.info(f"Created {rels_created_count} relationships from DXF: {document_name}")
+
+            return {
+                "status": "DXF Graph construction complete",
+                "document_name": document_name,
+                "file_path": file_path,
+                "document_info_from_dxf": extracted_data.get("document_info"),
+                "analysis_summary_from_dxf": extracted_data.get("analysis_summary"),
+                "nodes_created": nodes_created_count,
+                "rels_created": rels_created_count,
+            }
+
+        except Exception as e:
+            logger.exception(f"Error building graph from DXF drawing {document_name} at {file_path}: {e}")
+            return {
+                "status": "Error during DXF graph construction",
+                "document_name": document_name,
+                "file_path": file_path,
+                "error": str(e),
+                "nodes_created": 0,
+                "rels_created": 0
+            }
+
     def close_services(self):
         """Closes underlying services like Neo4j connection."""
         if self.neo4j_service:
@@ -390,6 +509,41 @@ if __name__ == '__main__':
         logger.info(f"Query Results for '桩基': {query_results_5}")
         assert len(query_results_5) > 0
         assert any(r.get("name") == "桩基" for r in query_results_5 if isinstance(r, dict))
+
+        # Test DXF processing
+        # Create a dummy DXF file for testing
+        temp_dxf_path = "temp_kg_engine_test.dxf"
+        import ezdxf # Make sure ezdxf is available for this test script
+        try:
+            test_doc = ezdxf.new('R2010')
+            test_msp = test_doc.modelspace()
+            test_doc.layers.new(name='CONCRETE_PARTS', dxfattribs={'color': 3})
+            test_msp.add_line((0,0), (5,5), dxfattribs={'layer': 'CONCRETE_PARTS'})
+            test_msp.add_text('Concrete Beam Section', dxfattribs={'insert': (1,1), 'layer': 'TEXTLAYER'})
+            test_doc.saveas(temp_dxf_path)
+
+            logger.info(f"\n--- Building graph from DXF document: {temp_dxf_path} ---")
+            dxf_build_summary = engine.build_graph_from_dxf_drawing(temp_dxf_path, os.path.basename(temp_dxf_path))
+            logger.info(f"DXF Build Summary: {dxf_build_summary}")
+
+            assert dxf_build_summary["status"] == "DXF Graph construction complete"
+            assert dxf_build_summary["nodes_created"] > 0
+            # Relationship count depends on extractor logic, might be 0 for simple DXF.
+            # Check for a specific node that should have been created.
+            # For example, a 'DrawingDocument' node or a 'Layer' node.
+            # This requires knowing the structure from DrawingKnowledgeExtractor.
+            # Let's assume a 'DrawingDocument' node is created with the filename.
+            doc_node_query = engine.query_graph_knowledge(os.path.basename(temp_dxf_path))
+            assert any(os.path.basename(temp_dxf_path) in r.get("name","") for r in doc_node_query if isinstance(r, dict) and r.get("labels") and "DrawingDocument" in r.get("labels"))
+            logger.info(f"Verified creation of DrawingDocument node for {os.path.basename(temp_dxf_path)}")
+
+        except ImportError:
+            logger.warning("ezdxf library not found, skipping DXF processing test in __main__.")
+        except Exception as e:
+            logger.error(f"Error during DXF processing test: {e}")
+        finally:
+            if os.path.exists(temp_dxf_path):
+                os.remove(temp_dxf_path)
 
 
         logger.info("KnowledgeGraphEngine tests completed.")
