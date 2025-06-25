@@ -1,0 +1,7 @@
+@prefix ex: <http://example.org/bridge#> .
+
+ex:BrooklynBridge ex:crosses "EastRiver" ;
+    ex:type "HybridCableStayedSuspensionBridge" .
+
+ex:GoldenGateBridge ex:locatedIn "SanFrancisco" ;
+    ex:type "SuspensionBridge" .

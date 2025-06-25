@@ -151,7 +151,7 @@ class BridgeDrawingAnalyzer:
 
         return dimensions_specs
 
-    def extract_material_specifications(self, dxf_data: Dict[str, Any]) -> Dict[str, List[String]]:
+    def extract_material_specifications(self, dxf_data: Dict[str, Any]) -> Dict[str, List[str]]:
         """
         Extracts material specifications from text data.
         e.g., 混凝土等级 (Concrete Grade C30, C40), 钢筋型号 (Rebar Type HRB400), 钢材牌号 (Steel Grade Q345).

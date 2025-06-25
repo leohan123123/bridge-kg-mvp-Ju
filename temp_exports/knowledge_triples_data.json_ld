@@ -1,0 +1,70 @@
+{
+  "@context": {
+    "ex": "http://example.org/bridge#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "@graph": [
+    {
+      "@id": "ex:s2",
+      "ex:p2": "o2"
+    },
+    {
+      "@id": "ex:s14",
+      "ex:p14": "o14"
+    },
+    {
+      "@id": "ex:s12",
+      "ex:p12": "o12"
+    },
+    {
+      "@id": "ex:s6",
+      "ex:p6": "o6"
+    },
+    {
+      "@id": "ex:s5",
+      "ex:p5": "o5"
+    },
+    {
+      "@id": "ex:s4",
+      "ex:p4": "o4"
+    },
+    {
+      "@id": "ex:s3",
+      "ex:p3": "o3"
+    },
+    {
+      "@id": "ex:s0",
+      "ex:p0": "o0"
+    },
+    {
+      "@id": "ex:s9",
+      "ex:p9": "o9"
+    },
+    {
+      "@id": "ex:s11",
+      "ex:p11": "o11"
+    },
+    {
+      "@id": "ex:s13",
+      "ex:p13": "o13"
+    },
+    {
+      "@id": "ex:s7",
+      "ex:p7": "o7"
+    },
+    {
+      "@id": "ex:s10",
+      "ex:p10": "o10"
+    },
+    {
+      "@id": "ex:s8",
+      "ex:p8": "o8"
+    },
+    {
+      "@id": "ex:s1",
+      "ex:p1": "o1"
+    }
+  ]
+}

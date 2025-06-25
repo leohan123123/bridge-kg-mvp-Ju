@@ -1,0 +1,25 @@
+{
+  "package_name": "sim_export_knowledge_triples_sim_doc_auto_gen_b3b073",
+  "data_type": "knowledge_triples",
+  "generation_parameters": {
+    "source": "pre_generated",
+    "original_graph_stats_subset": "sim_doc_auto_gen",
+    "original_count": 3
+  },
+  "export_formats_requested": [
+    "jsonl",
+    "csv"
+  ],
+  "exported_files": [
+    "knowledge_triples_data.jsonl",
+    "knowledge_triples_data.csv"
+  ],
+  "num_records": 3,
+  "quality_assessment": {
+    "overall_score": 4.5,
+    "accuracy": 4.2,
+    "completeness": 4.8,
+    "notes": "Placeholder scores"
+  },
+  "timestamp": "2025-06-25T01:42:29.323513Z"
+}

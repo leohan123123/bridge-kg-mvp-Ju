@@ -1,0 +1,3 @@
+{"subject": "entity_1", "predicate": "HAS_NAME", "object": "Sample Entity 1"}
+{"subject": "entity_1", "predicate": "CONNECTS_TO", "object": "entity_2"}
+{"subject": "entity_2", "predicate": "HAS_NAME", "object": "Sample Entity 2"}

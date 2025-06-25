@@ -4,19 +4,9 @@ from typing import Dict, List, Any
 # from app.services.ifc_parser_service import IFCParserService
 # from app.services.bridge_bim_analyzer import BridgeBIMAnalyzer
 # For now, assuming they are in the same directory or PYTHONPATH is set up for direct import if testing locally.
-try:
-    from ifc_parser_service import IFCParserService
-    from bridge_bim_analyzer import BridgeBIMAnalyzer
-except ImportError:
-    # This is a fallback for potentially running this file directly for testing,
-    # assuming the other service files are in the same directory.
-    # In a real application structure, direct relative imports might be an issue
-    # depending on how the application is launched.
-    # Python's import system can be tricky with scripts vs modules.
-    # For a package structure (e.g. `app.services`), the imports above should work.
-    print("Attempting local import for IFCParserService and BridgeBIMAnalyzer for testing purposes.")
-    from ifc_parser_service import IFCParserService
-    from bridge_bim_analyzer import BridgeBIMAnalyzer
+# Corrected imports for consistency with execution environment
+from app.services.ifc_parser_service import IFCParserService
+from app.services.bridge_bim_analyzer import BridgeBIMAnalyzer
 
 
 class BIMKnowledgeBuilder:
@@ -169,7 +159,8 @@ class BIMKnowledgeBuilder:
             # Could link this to project or create specific task nodes. For now, add to project properties.
             for node in knowledge_graph["nodes"]:
                 if node["id"] == project_node_id:
-                    if "properties" not in node: node["properties"] = {}
+                    if "properties" not in node:
+                        node["properties"] = {}
                     node["properties"].update(seq_prop)
                     break
 

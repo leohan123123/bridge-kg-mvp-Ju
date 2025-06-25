@@ -1,8 +1,8 @@
 from typing import Dict, List, Any
 # Ensure correct relative imports if these services are in the same directory or a structured package
 # For a flat structure under backend/app/services/ :
-from dxf_parser_service import DXFParserService
-from bridge_drawing_analyzer import BridgeDrawingAnalyzer
+from app.services.dxf_parser import DXFParserService
+from app.services.bridge_drawing_analyzer import BridgeDrawingAnalyzer
 import uuid # For generating unique IDs for entities if needed
 
 class DrawingKnowledgeExtractor:
