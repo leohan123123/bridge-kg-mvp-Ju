@@ -1,7 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Layout, Menu, Spin, Typography, theme, Breadcrumb } from 'antd'; // Spin 用于加载指示, Breadcrumb for navigation
-import { HomeOutlined, ReadOutlined, ExperimentOutlined, ToolOutlined, SafetyCertificateOutlined, ControlOutlined, BulbOutlined, FileAddOutlined, SettingOutlined, InfoCircleOutlined, DatabaseOutlined, ApartmentOutlined, CloudUploadOutlined, ExportOutlined, MonitorOutlined } from '@ant-design/icons'; // Added new Icons
+import { HomeOutlined, ReadOutlined, ExperimentOutlined, ToolOutlined, SafetyCertificateOutlined, ControlOutlined, BulbOutlined, FileAddOutlined, SettingOutlined, InfoCircleOutlined, DatabaseOutlined, ApartmentOutlined, CloudUploadOutlined, ExportOutlined, MonitorOutlined, ShareAltOutlined, DashboardOutlined, FundViewOutlined } from '@ant-design/icons'; // Added new Icons for Advanced Features
 import './App.css'; // App特定样式
 
 // 引入 AI 聊天组件
@@ -26,14 +26,26 @@ const ConstructionKBPage = lazy(() => import('./pages/ConstructionKB'));
 const InspectionMaintenanceKBPage = lazy(() => import('./pages/InspectionMaintenanceKB'));
 const QualityControlKBPage = lazy(() => import('./pages/QualityControlKB'));
 
-// Placeholder for System Monitoring
-const SystemMonitoringPlaceholder: React.FC = () => (
+// Advanced Feature Pages
+const AdvancedGraphVisualizationPage = lazy(() => import('./pages/AdvancedGraphVisualization'));
+const ProfessionalDashboardPage = lazy(() => import('./pages/ProfessionalDashboard'));
+const SystemMonitoringPage = lazy(() => import('./pages/SystemMonitoring'));
+const DataAnalyticsPlaceholderPage: React.FC = () => ( // Placeholder for Data Analytics
   <div style={{ padding: 50, textAlign: 'center' }}>
-    <Title level={3}>系统监控 (System Monitoring)</Title>
-    <p>此功能正在开发中，敬请期待。</p>
-    <MonitorOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
+    <Title level={3}>数据分析 (Data Analytics)</Title>
+    <p>此功能正在规划中，敬请期待。</p>
+    <FundViewOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
   </div>
 );
+
+// Placeholder for System Monitoring (will be replaced by actual SystemMonitoringPage)
+// const SystemMonitoringPlaceholder: React.FC = () => (
+//   <div style={{ padding: 50, textAlign: 'center' }}>
+//     <Title level={3}>系统监控 (System Monitoring)</Title>
+//     <p>此功能正在开发中，敬请期待。</p>
+//     <MonitorOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
+//   </div>
+// );
 
 // Breadcrumb mapping
 const breadcrumbNameMap: Record<string, string> = {
@@ -52,7 +64,12 @@ const breadcrumbNameMap: Record<string, string> = {
   '/system/ontology-manager': '本体管理',
   '/system/batch-processor': '批量处理',
   '/system/training-data-exporter': '训练数据导出',
-  '/system/system-monitoring': '系统监控',
+  // '/system/system-monitoring': '系统监控', // This was part of System Management, will be handled by new Advanced menu
+  // Advanced Features Paths
+  '/advanced-graph': '图谱可视化',
+  '/professional-dashboard': '专业仪表板',
+  '/system-monitoring': '系统监控', // Note: This path is now top-level as per task spec for advanced features
+  // '/data-analytics': '数据分析', // For future use - placeholder
 };
 
 const AppContent: React.FC = () => {
@@ -127,7 +144,13 @@ const AppContent: React.FC = () => {
               <Route path="/system/ontology-manager" element={<OntologyManagerPage />} />
               <Route path="/system/batch-processor" element={<BatchProcessorPage />} />
               <Route path="/system/training-data-exporter" element={<TrainingDataExporterPage />} />
-              <Route path="/system/system-monitoring" element={<SystemMonitoringPlaceholder />} />
+              {/* <Route path="/system/system-monitoring" element={<SystemMonitoringPlaceholder />} /> */} {/* This specific route under /system is removed or handled by the new top-level /system-monitoring */}
+
+              {/* Advanced Feature Routes */}
+              <Route path="/advanced-graph" element={<AdvancedGraphVisualizationPage />} />
+              <Route path="/professional-dashboard" element={<ProfessionalDashboardPage />} />
+              <Route path="/system-monitoring" element={<SystemMonitoringPage />} />
+              <Route path="/data-analytics" element={<DataAnalyticsPlaceholderPage />} /> {/* Placeholder route */}
 
               {/* Professional Knowledge Base Routes */}
               <Route path="/professional-kb/design" element={<BridgeDesignKBPage />} />
@@ -174,8 +197,22 @@ const App: React.FC = () => {
       if (path === '/system/ontology-manager') selectedKey = 'ontology-manager';
       else if (path === '/system/batch-processor') selectedKey = 'batch-processor';
       else if (path === '/system/training-data-exporter') selectedKey = 'training-data-exporter';
-      else if (path === '/system/system-monitoring') selectedKey = 'system-monitoring';
+      // else if (path === '/system/system-monitoring') selectedKey = 'system-monitoring'; // Removed as it's moving to advanced features
       else selectedKey = 'system-management'; // Fallback for parent
+    }
+    // Add selection logic for new advanced features
+    else if (path.startsWith('/advanced-graph')) {
+      selectedKey = 'advanced-graph';
+      openKey = 'advanced-features';
+    } else if (path.startsWith('/professional-dashboard')) {
+      selectedKey = 'professional-dashboard';
+      openKey = 'advanced-features';
+    } else if (path.startsWith('/system-monitoring')) {
+      selectedKey = 'system-monitoring'; // This key is now a child of 'advanced-features'
+      openKey = 'advanced-features';
+    } else if (path.startsWith('/data-analytics')) { // For future placeholder
+      selectedKey = 'data-analytics';
+      openKey = 'advanced-features';
     }
     else if (path.startsWith('/about')) selectedKey = 'about';
 
@@ -209,7 +246,18 @@ const App: React.FC = () => {
         { key: 'ontology-manager', icon: <ApartmentOutlined />, label: <Link to="/system/ontology-manager">本体管理</Link> },
         { key: 'batch-processor', icon: <CloudUploadOutlined />, label: <Link to="/system/batch-processor">批量处理</Link> },
         { key: 'training-data-exporter', icon: <ExportOutlined />, label: <Link to="/system/training-data-exporter">训练数据导出</Link> },
-        { key: 'system-monitoring', icon: <MonitorOutlined />, label: <Link to="/system/system-monitoring">系统监控</Link> },
+        // { key: 'system-monitoring', icon: <MonitorOutlined />, label: <Link to="/system/system-monitoring">系统监控</Link> }, // Removed, will be in Advanced Features
+      ]
+    },
+    {
+      key: 'advanced-features', // Parent key for the new group
+      icon: <ExperimentOutlined />, // Using ExperimentOutlined as a general icon for "Advanced Features"
+      label: '高级功能',
+      children: [
+        { key: 'advanced-graph', icon: <ShareAltOutlined />, label: <Link to="/advanced-graph">图谱可视化</Link> },
+        { key: 'professional-dashboard', icon: <DashboardOutlined />, label: <Link to="/professional-dashboard">专业仪表板</Link> },
+        { key: 'system-monitoring', icon: <MonitorOutlined />, label: <Link to="/system-monitoring">系统监控</Link> },
+        { key: 'data-analytics', icon: <FundViewOutlined />, label: <Link to="/data-analytics">数据分析 (预留)</Link> }, // Placeholder
       ]
     },
     { key: 'about', icon: <InfoCircleOutlined />, label: <Link to="/about">关于</Link> },
