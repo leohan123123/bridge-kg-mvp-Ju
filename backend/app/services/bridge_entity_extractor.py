@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 import re
 
 BRIDGE_ENGINEERING_ONTOLOGY = {

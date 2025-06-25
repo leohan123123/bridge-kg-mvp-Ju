@@ -1,0 +1,4 @@
+subject,predicate,object
+entity_1,HAS_NAME,Sample Entity 1
+entity_1,CONNECTS_TO,entity_2
+entity_2,HAS_NAME,Sample Entity 2

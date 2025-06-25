@@ -1,0 +1,18 @@
+{
+  "@context": {
+    "ex": "http://example.org/bridge#",
+    "type": "@type"
+  },
+  "@graph": [
+    {
+      "@id": "ex:BrooklynBridge",
+      "ex:crosses": "EastRiver",
+      "ex:type": "HybridCableStayedSuspensionBridge"
+    },
+    {
+      "@id": "ex:GoldenGateBridge",
+      "ex:locatedIn": "SanFrancisco",
+      "ex:type": "SuspensionBridge"
+    }
+  ]
+}

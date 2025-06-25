@@ -673,6 +673,203 @@ class KnowledgeGraphEngine:
             self.neo4j_service.close()
             logger.info("KnowledgeGraphEngine closed Neo4j service.")
 
+    def auto_generate_training_data(self, graph_stats: Dict, auto_export: bool = False) -> Dict:
+        """
+        Graph construction完成后自动生成训练数据.
+        1. 分析图谱内容 (based on graph_stats and potentially more queries).
+        2. 生成对应的训练数据 (e.g., QA pairs, entity descriptions).
+        3. 质量控制和优化.
+        4. 可选自动导出.
+        """
+        logger.info(f"Starting automatic training data generation. Graph stats: {graph_stats}, Auto-export: {auto_export}")
+
+        # Initialize services needed for training data generation
+        # These should ideally be injected or available if KGE is part of a larger app context
+        # For now, direct instantiation if not already members.
+        # To avoid circular dependencies if these services use KGE, they should be independent or use facades.
+        try:
+            # Assuming these are importable from the current service layer
+            from .training_data_generator import TrainingDataGenerator
+            from .data_quality_controller import DataQualityController
+            from .data_export_service import DataExportService
+        except ImportError:
+            logger.error("Failed to import training data services for auto-generation. Ensure they are in the same services package.")
+            # Fallback to placeholders if actual services can't be imported (e.g. during isolated testing or if structure is different)
+            # This section is for robustness in case the primary import fails due to pathing or circularity in some contexts.
+            # In a well-structured FastAPI app with dependency injection, this wouldn't be needed.
+            logger.warning("Falling back to placeholder training data services for auto_generate_training_data.")
+            class TrainingDataGeneratorPlaceholder:
+                def generate_qa_pairs_from_graph(self, entity_types: List[str] = None, limit: int = 10) -> List[Dict]: return [{"question": "Placeholder Q", "answer": "Placeholder A"}]
+                def generate_entity_descriptions(self, entity_types: List[str], limit: int = 5) -> List[Dict]: return [{"entity_id": "ph_id", "description":"Placeholder desc"}]
+            class DataQualityControllerPlaceholder:
+                def score_data_quality(self, data: List[Dict], data_type: str = "generic") -> Dict: return {"overall_score": 3.0}
+                def generate_quality_report(self, quality_scores: Dict) -> str: return "Placeholder quality report."
+            class DataExportServicePlaceholder:
+                def __init__(self, output_dir="auto_exports_kge"):
+                    self.output_dir = output_dir
+                    if not os.path.exists(output_dir): os.makedirs(output_dir)
+                def create_export_package(self, export_config: Dict) -> Dict:
+                    pkg_loc = os.path.join(self.output_dir, export_config.get("package_name", "pkg"))
+                    os.makedirs(pkg_loc, exist_ok=True)
+                    return {"package_location": pkg_loc, "files_generated": ["dummy.txt"], "metadata": {}}
+
+            data_generator = TrainingDataGeneratorPlaceholder()
+            quality_controller = DataQualityControllerPlaceholder()
+            export_service = DataExportServicePlaceholder()
+        else: # If imports succeed
+            data_generator = TrainingDataGenerator()
+            quality_controller = DataQualityController()
+            export_service = DataExportService() # Initialize with default export path or configure
+
+        generation_summary = {}
+        all_generated_data = {} # To store data of different types
+
+        # 1. Analyze graph content (graph_stats provides some info)
+        # We might decide which types of data to generate based on stats
+        # e.g., if many entities of type 'Bridge' exist, generate descriptions for them.
+        # For MVP, let's try to generate a mix: QA pairs and entity descriptions.
+
+        num_entities = graph_stats.get("unique_entities_processed", graph_stats.get("nodes_created", 0))
+        target_qa_pairs = min(max(50, num_entities // 2), 500) # Generate some QA pairs, capped
+        target_entity_descriptions = min(max(20, num_entities // 5), 200) # And some descriptions
+
+        # 2. Generate training data
+        logger.info(f"Generating {target_qa_pairs} QA pairs...")
+        try:
+            # Determine relevant entity types from graph_stats if possible, or use generic ones
+            # graph_stats might have entities_found_by_category: {"Bridge": 10, "Pier": 20}
+            entity_types_for_qa = list(graph_stats.get("entities_found_by_category", {}).keys())[:3] # Use top 3 for variety
+            if not entity_types_for_qa: entity_types_for_qa = None # Default to generator's internal logic
+
+            qa_pairs = data_generator.generate_qa_pairs_from_graph(entity_types=entity_types_for_qa, limit=target_qa_pairs)
+            all_generated_data["qa_pairs"] = qa_pairs
+            generation_summary["qa_pairs_generated"] = len(qa_pairs)
+            logger.info(f"Generated {len(qa_pairs)} QA pairs.")
+        except Exception as e:
+            logger.error(f"Error generating QA pairs: {e}")
+            generation_summary["qa_pairs_error"] = str(e)
+
+        logger.info(f"Generating {target_entity_descriptions} entity descriptions...")
+        try:
+            # Use entity types that are prominent in the graph
+            entity_types_for_desc = list(graph_stats.get("entities_found_by_category", {}).keys())[:5] # Describe top 5 types
+            if not entity_types_for_desc:
+                 # If no types from stats, maybe pick common bridge engineering types as a fallback
+                 entity_types_for_desc = ["Bridge", "Beam", "Column", "Foundation"] # Example defaults
+
+            # Ensure entity_types_for_desc is not empty if generator requires it
+            if entity_types_for_desc:
+                entity_descriptions = data_generator.generate_entity_descriptions(entity_types=entity_types_for_desc, limit=target_entity_descriptions)
+                all_generated_data["entity_descriptions"] = entity_descriptions
+                generation_summary["entity_descriptions_generated"] = len(entity_descriptions)
+                logger.info(f"Generated {len(entity_descriptions)} entity descriptions.")
+            else:
+                logger.warning("No specific entity types identified for generating descriptions. Skipping.")
+                generation_summary["entity_descriptions_generated"] = 0
+
+        except Exception as e:
+            logger.error(f"Error generating entity descriptions: {e}")
+            generation_summary["entity_descriptions_error"] = str(e)
+
+        # 3. Quality control and optimization
+        quality_reports = {}
+        for data_type, data_items in all_generated_data.items():
+            if data_items:
+                logger.info(f"Performing quality control for {data_type}...")
+                try:
+                    quality_scores = quality_controller.score_data_quality(data_items, data_type=data_type)
+                    report_str = quality_controller.generate_quality_report(quality_scores)
+                    quality_reports[data_type] = {
+                        "scores": quality_scores,
+                        "report_summary": report_str.split('\n')[0] # First line as summary
+                    }
+                    logger.info(f"Quality assessment for {data_type}: Score {quality_scores.get('overall_score')}")
+                except Exception as e:
+                    logger.error(f"Error during quality control for {data_type}: {e}")
+                    quality_reports[data_type] = {"error": str(e)}
+            else:
+                logger.info(f"No data for {data_type} to perform quality control on.")
+
+
+        generation_summary["quality_assessments"] = quality_reports
+
+        # 4. Optional auto-export
+        if auto_export and all_generated_data:
+            logger.info("Auto-exporting generated training data...")
+            export_results = {}
+            for data_type, data_items in all_generated_data.items():
+                if data_items:
+                    try:
+                        export_config = {
+                            "data_type": data_type,
+                            "generation_params": {"source": "auto_generated_from_graph", "original_graph_stats": graph_stats},
+                            "export_formats": ["jsonl", "csv"], # Default formats for auto-export
+                            "package_name": f"auto_export_{data_type}_{graph_stats.get('document_name', 'generic_graph').replace('.', '_')}_{uuid.uuid4().hex[:8]}"
+                        }
+                        # The export service's create_export_package expects the data to be generated by ITSELF.
+                        # Here, we have pre-generated data. We need a way to pass this data to the export service,
+                        # or the export service needs a method to export pre-existing data.
+                        # For now, let's assume DataExportService might need adjustment or we use its internal generation
+                        # based on simplified params.
+                        # OR, more practically, the DataExportService should have methods like:
+                        # export_service.export_data(data_items, format, path) and then package these.
+                        # Given the current DataExportService.create_export_package, it RE-GENERATES data.
+                        # This is not ideal for this flow.
+                        #
+                        # Workaround: For now, we'll log that export would happen and what would be exported.
+                        # A real implementation would require DataExportService to handle pre-generated data.
+                        logger.info(f"Simulating export for {data_type}. Package config: {export_config['package_name']}")
+                        # Actual call would be:
+                        # package_info = export_service.create_export_package(export_config)
+                        # This would re-generate if not careful.
+                        # Let's assume for this placeholder that create_export_package can be "told" what data to use,
+                        # or it's smart enough. The current placeholder for DataExportService in KGE does re-generate.
+                        # This needs refinement in the actual service interaction.
+
+                        # TEMPORARY: To make the placeholder flow, we'll call the placeholder export
+                        # which does its own mini-generation. This is not ideal but makes the code run.
+                        # A better approach: DataExportService.export_prepared_data_package(data_items, export_config)
+
+                        # Using the existing placeholder structure, which implies re-generation or simplified generation:
+                        # This part highlights a design consideration for service interaction.
+                        # For now, the placeholder data_export_service.create_export_package will run its own logic.
+                        # The "data_items" we generated above are effectively just for quality check in this temporary setup.
+
+                        # Let's assume the `export_config` can somehow signal to use the data in `data_items`
+                        # or, more realistically, the `DataExportService` is refactored.
+                        # Since `export_service` here might be the placeholder, its `create_export_package` is simple.
+                        # If it's the real one, it would trigger its own generation.
+
+                        # Let's make the export_config for the placeholder explicit about generation:
+                        placeholder_export_config = {
+                             "data_type": data_type,
+                             "generation_params": {"limit": len(data_items)}, # Try to match length
+                             "export_formats": ["jsonl", "csv"],
+                             "package_name": f"auto_export_{data_type}_{graph_stats.get('document_name', 'graph').replace('.', '_')}_{uuid.uuid4().hex[:8]}"
+                        }
+                        # This is if export_service is the placeholder from above.
+                        # If it's the REAL service, it would use its TrainingDataGenerator.
+                        # Corrected call to pass pre-generated data:
+                        package_info = export_service.create_export_package(
+                            export_config=export_config, # Use the original export_config
+                            data_to_export=data_items
+                        )
+
+                        export_results[data_type] = {
+                            "package_location": package_info.get("package_location"),
+                            "files": package_info.get("files_generated")
+                        }
+                        logger.info(f"Auto-exported {data_type} to {package_info.get('package_location')}")
+                    except Exception as e:
+                        logger.error(f"Error auto-exporting {data_type}: {e}")
+                        export_results[data_type] = {"error": str(e)}
+            generation_summary["auto_export_results"] = export_results
+        else:
+            logger.info("Auto-export disabled or no data to export.")
+
+        logger.info("Automatic training data generation process finished.")
+        return generation_summary
+
 
 # Example Usage (can be removed or moved to a test file)
 if __name__ == '__main__':

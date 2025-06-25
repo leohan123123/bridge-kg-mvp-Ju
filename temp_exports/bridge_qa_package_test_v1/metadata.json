@@ -1,0 +1,23 @@
+{
+  "package_name": "bridge_qa_package_test_v1",
+  "data_type": "qa_pairs",
+  "generation_parameters": {
+    "limit": 20
+  },
+  "export_formats_requested": [
+    "jsonl",
+    "csv"
+  ],
+  "exported_files": [
+    "qa_pairs_data.jsonl",
+    "qa_pairs_data.csv"
+  ],
+  "num_records": 20,
+  "quality_assessment": {
+    "overall_score": 4.5,
+    "accuracy": 4.2,
+    "completeness": 4.8,
+    "notes": "Placeholder scores"
+  },
+  "timestamp": "2025-06-24T18:35:34.903920Z"
+}

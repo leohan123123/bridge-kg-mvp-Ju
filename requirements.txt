@@ -1,2 +1,6 @@
 ezdxf==1.1.4  # DXF文件解析
 ifcopenshell==0.7.0.240406  # IFC文件解析
+rdflib==7.0.0        # RDF数据处理
+pandas==2.2.2        # CSV数据处理 (updated from 2.1.0 due to build issues)
+rich==13.7.0         # For rich text and beautiful formatting in TUI/logs
+neo4j==5.17.0        # Neo4j driver
