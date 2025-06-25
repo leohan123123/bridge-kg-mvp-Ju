@@ -1,7 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Layout, Menu, Spin, Typography, theme, Breadcrumb } from 'antd'; // Spin 用于加载指示, Breadcrumb for navigation
-import { HomeOutlined, ReadOutlined, ExperimentOutlined, ToolOutlined, SafetyCertificateOutlined, ControlOutlined, BulbOutlined, FileAddOutlined, SettingOutlined, InfoCircleOutlined } from '@ant-design/icons'; // Icons
+import { HomeOutlined, ReadOutlined, ExperimentOutlined, ToolOutlined, SafetyCertificateOutlined, ControlOutlined, BulbOutlined, FileAddOutlined, SettingOutlined, InfoCircleOutlined, DatabaseOutlined, ApartmentOutlined, CloudUploadOutlined, ExportOutlined, MonitorOutlined } from '@ant-design/icons'; // Added new Icons
 import './App.css'; // App特定样式
 
 // 引入 AI 聊天组件
@@ -15,7 +15,9 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const KnowledgeQueryPage = lazy(() => import('./pages/KnowledgeQuery'));
 const FileUploadPage = lazy(() => import('./pages/FileUpload'));
-const OntologyManagerPage = lazy(() => import('./pages/OntologyManagerPage'));
+const OntologyManagerPage = lazy(() => import('./pages/OntologyManager'));
+const BatchProcessorPage = lazy(() => import('./pages/BatchProcessor'));
+const TrainingDataExporterPage = lazy(() => import('./pages/TrainingDataExporter'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Professional Knowledge Base Pages
@@ -24,6 +26,14 @@ const ConstructionKBPage = lazy(() => import('./pages/ConstructionKB'));
 const InspectionMaintenanceKBPage = lazy(() => import('./pages/InspectionMaintenanceKB'));
 const QualityControlKBPage = lazy(() => import('./pages/QualityControlKB'));
 
+// Placeholder for System Monitoring
+const SystemMonitoringPlaceholder: React.FC = () => (
+  <div style={{ padding: 50, textAlign: 'center' }}>
+    <Title level={3}>系统监控 (System Monitoring)</Title>
+    <p>此功能正在开发中，敬请期待。</p>
+    <MonitorOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
+  </div>
+);
 
 // Breadcrumb mapping
 const breadcrumbNameMap: Record<string, string> = {
@@ -31,32 +41,54 @@ const breadcrumbNameMap: Record<string, string> = {
   '/knowledge-query': '知识查询',
   '/ai-assistant': 'AI 助手',
   '/file-upload': '文件上传',
-  '/ontology-management': '本体管理',
   '/about': '关于',
   '/professional-kb': '专业知识库',
   '/professional-kb/design': '设计知识库',
   '/professional-kb/construction': '施工工艺知识库',
   '/professional-kb/inspection-maintenance': '检测维护知识库',
   '/professional-kb/quality-control': '质量控制标准库',
+  // System Management Paths
+  '/system': '系统管理',
+  '/system/ontology-manager': '本体管理',
+  '/system/batch-processor': '批量处理',
+  '/system/training-data-exporter': '训练数据导出',
+  '/system/system-monitoring': '系统监控',
 };
 
 const AppContent: React.FC = () => {
   const location = useLocation();
   const pathSnippets = location.pathname.split('/').filter(i => i);
-  const extraBreadcrumbItems = pathSnippets.map((_, index) => {
+
+  const breadcrumbItemsFromSnippets = pathSnippets.map((snippet, index) => {
     const url = `/${pathSnippets.slice(0, index + 1).join('/')}`;
+    // Handle cases where a part of the path might not be in breadcrumbNameMap directly
+    // e.g. /system/ontology-manager, "system" might not be a linkable breadcrumb on its own
+    // if breadcrumbNameMap has /system, and /system/ontology-manager
+    const name = breadcrumbNameMap[url] || snippet;
+    if (breadcrumbNameMap[url]) { // Only create a link if it's a defined breadcrumb path
+      return (
+        <Breadcrumb.Item key={url}>
+          <Link to={url}>{name}</Link>
+        </Breadcrumb.Item>
+      );
+    }
+    // If intermediate path like '/system' is not meant to be clickable or doesn't have a name,
+    // just display its name or skip. For a cleaner approach, ensure all path segments that
+    // should appear in breadcrumbs are in breadcrumbNameMap.
+    // For this example, we'll display the name if it exists, otherwise the snippet.
     return (
       <Breadcrumb.Item key={url}>
-        <Link to={url}>{breadcrumbNameMap[url] || url.substring(url.lastIndexOf('/') + 1)}</Link>
+        {name}
       </Breadcrumb.Item>
     );
   });
+
 
   const breadcrumbItems = [
     <Breadcrumb.Item key="home">
       <Link to="/"><HomeOutlined /></Link>
     </Breadcrumb.Item>,
-  ].concat(extraBreadcrumbItems);
+  ].concat(breadcrumbItemsFromSnippets);
 
   const {
     token: { colorBgContainer, borderRadiusLG },
@@ -75,7 +107,7 @@ const AppContent: React.FC = () => {
         <div
           style={{
             // padding: 24, // Keep outer padding for content div if needed, but individual pages handle their own via Layout
-            textAlign: 'center', // May not be needed if pages define their own alignment
+            // textAlign: 'center', // May not be needed if pages define their own alignment
             background: colorBgContainer, // This applies background to the content shell
             borderRadius: borderRadiusLG, // Rounded corners for the content shell
             minHeight: 'calc(100vh - 220px)', // Adjusted height
@@ -90,7 +122,12 @@ const AppContent: React.FC = () => {
               <Route path="/knowledge-query" element={<KnowledgeQueryPage />} />
               <Route path="/ai-assistant" element={<AIChatInterface />} />
               <Route path="/file-upload" element={<FileUploadPage />} />
-              <Route path="/ontology-management" element={<OntologyManagerPage />} />
+
+              {/* System Management Routes */}
+              <Route path="/system/ontology-manager" element={<OntologyManagerPage />} />
+              <Route path="/system/batch-processor" element={<BatchProcessorPage />} />
+              <Route path="/system/training-data-exporter" element={<TrainingDataExporterPage />} />
+              <Route path="/system/system-monitoring" element={<SystemMonitoringPlaceholder />} />
 
               {/* Professional Knowledge Base Routes */}
               <Route path="/professional-kb/design" element={<BridgeDesignKBPage />} />
@@ -112,26 +149,34 @@ const AppContent: React.FC = () => {
 
 
 const App: React.FC = () => {
-  const location = useLocation(); // Import useLocation here if App is wrapped by Router
+  const location = useLocation();
 
   const getCurrentKeys = () => {
     const path = location.pathname;
-    let selectedKey = '';
+    let selectedKey = path; // Default selected key to current path for specific matches
     let openKey = '';
 
     if (path === '/') selectedKey = 'home';
     else if (path.startsWith('/knowledge-query')) selectedKey = 'knowledge-query';
     else if (path.startsWith('/professional-kb')) {
       openKey = 'professional-kb';
-      if (path.includes('/design')) selectedKey = 'kb-design';
-      else if (path.includes('/construction')) selectedKey = 'kb-construction';
-      else if (path.includes('/inspection-maintenance')) selectedKey = 'kb-inspection';
-      else if (path.includes('/quality-control')) selectedKey = 'kb-quality';
-      else selectedKey = 'professional-kb'; // Fallback if just /professional-kb
+      // Specific child selected
+      if (path === '/professional-kb/design') selectedKey = 'kb-design';
+      else if (path === '/professional-kb/construction') selectedKey = 'kb-construction';
+      else if (path === '/professional-kb/inspection-maintenance') selectedKey = 'kb-inspection';
+      else if (path === '/professional-kb/quality-control') selectedKey = 'kb-quality';
+      else selectedKey = 'professional-kb'; // Fallback for parent
     }
     else if (path.startsWith('/ai-assistant')) selectedKey = 'ai-assistant';
     else if (path.startsWith('/file-upload')) selectedKey = 'file-upload';
-    else if (path.startsWith('/ontology-management')) selectedKey = 'ontology-management';
+    else if (path.startsWith('/system')) {
+      openKey = 'system-management'; // Parent key for the group
+      if (path === '/system/ontology-manager') selectedKey = 'ontology-manager';
+      else if (path === '/system/batch-processor') selectedKey = 'batch-processor';
+      else if (path === '/system/training-data-exporter') selectedKey = 'training-data-exporter';
+      else if (path === '/system/system-monitoring') selectedKey = 'system-monitoring';
+      else selectedKey = 'system-management'; // Fallback for parent
+    }
     else if (path.startsWith('/about')) selectedKey = 'about';
 
     return { selectedKey, openKey };
@@ -140,7 +185,7 @@ const App: React.FC = () => {
   const { selectedKey, openKey } = getCurrentKeys();
 
   // Navigation menu items
-  const menuItems = [
+  const menuItems: MenuProps['items'] = [ // Added MenuProps type for items
     { key: 'home', icon: <HomeOutlined />, label: <Link to="/">首页</Link> },
     { key: 'knowledge-query', icon: <ReadOutlined />, label: <Link to="/knowledge-query">知识查询</Link> },
     {
@@ -156,7 +201,17 @@ const App: React.FC = () => {
     },
     { key: 'ai-assistant', icon: <BulbOutlined />, label: <Link to="/ai-assistant">AI 助手</Link> },
     { key: 'file-upload', icon: <FileAddOutlined />, label: <Link to="/file-upload">文件上传</Link> },
-    { key: 'ontology-management', icon: <SettingOutlined />, label: <Link to="/ontology-management">本体管理</Link> },
+    {
+      key: 'system-management', // Parent key for the group
+      icon: <SettingOutlined />,
+      label: '系统管理',
+      children: [
+        { key: 'ontology-manager', icon: <ApartmentOutlined />, label: <Link to="/system/ontology-manager">本体管理</Link> },
+        { key: 'batch-processor', icon: <CloudUploadOutlined />, label: <Link to="/system/batch-processor">批量处理</Link> },
+        { key: 'training-data-exporter', icon: <ExportOutlined />, label: <Link to="/system/training-data-exporter">训练数据导出</Link> },
+        { key: 'system-monitoring', icon: <MonitorOutlined />, label: <Link to="/system/system-monitoring">系统监控</Link> },
+      ]
+    },
     { key: 'about', icon: <InfoCircleOutlined />, label: <Link to="/about">关于</Link> },
   ];
 
