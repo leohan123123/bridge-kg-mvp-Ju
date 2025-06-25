@@ -1,54 +1,164 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Layout, Typography, Row, Col, Card, Tabs, Steps, Button } from 'antd';
+import ProfessionalSearch from '../components/professional/ProfessionalSearch';
+import ParameterCalculator from '../components/professional/ParameterCalculator'; // For cost-benefit or other calcs
+// import { Network } from 'vis-network/standalone/esm/vis-network'; // For graph visualization
+// import EChartsReact from 'echarts-for-react'; // For charts
+
+const { Content } = Layout;
+const { Title, Paragraph } = Typography;
+const { TabPane } = Tabs;
+const { Step } = Steps;
+
+// Mock Data - Replace with API calls
+const mockDetectionMethods = [
+  { id: 'dm1', name: 'Visual Inspection', details: 'Basic visual check for cracks, spalls...' },
+  { id: 'dm2', name: 'Ultrasonic Testing', details: 'Detect internal flaws using sound waves.' },
+  { id: 'dm3', name: 'Infrared Thermography', details: 'Identify delamination or water ingress.' },
+];
+
+const mockDamageTypes = [
+  { id: 'dt1', name: 'Corrosion', diagnosis: 'Identify rust stains, section loss. Causes: moisture, chlorides.' },
+  { id: 'dt2', name: 'Fatigue Cracking', diagnosis: 'Locate near stress concentrations. Causes: cyclic loading.' },
+];
+
+const mockMaintenanceStrategies = [
+  { id: 'ms1', name: 'Preventive Maintenance', optimization: 'Schedule regular inspections and minor repairs.' },
+  { id: 'ms2', name: 'Corrective Maintenance', optimization: 'Repair as needed when damage occurs.' },
+];
+
+const mockRepairTechniques = [
+  { id: 'rt1', name: 'Patch Repair', details: 'For localized concrete damage.' },
+  { id: 'rt2', name: 'CFRP Strengthening', details: 'For increasing load capacity.' },
+];
+
+const mockMonitoringDevices = [
+    { id: 'md1', name: 'Strain Gauges', params: 'Location, sampling rate' },
+    { id: 'md2', name: 'Accelerometers', params: 'Sensitivity, frequency range' },
+];
+
+const mockCostBenefitParams = [
+    { name: 'repairCost', label: 'Repair Cost ($)', defaultValue: 10000 },
+    { name: 'extendedLife', label: 'Extended Service Life (Years)', defaultValue: 5 },
+    { name: 'annualBenefit', label: 'Annual Benefit ($/Year)', defaultValue: 3000 },
+];
+
 
 const InspectionMaintenanceKB = () => {
-  // Placeholder data - in a real app, this would come from API calls
-  const kbSections = [
-    { id: 'detection_methods', title: '检测技术和方法库浏览', description: 'Browse various bridge inspection techniques and methodologies.' },
-    { id: 'damage_types', title: '损伤类型和特征展示', description: 'Explore common bridge damage types, their characteristics, and visual examples.' },
-    { id: 'maintenance_strategies', title: '维护策略和计划管理', description: 'Manage and review maintenance strategies and long-term plans.' },
-    { id: 'repair_techniques', title: '修复技术和方案查询', description: 'Search for suitable repair techniques and solutions for specific damages.' },
-    { id: 'monitoring_systems', title: '监测系统配置界面', description: 'Configure and manage bridge health monitoring systems.' },
-    { id: 'damage_diagnosis_tool', title: '损伤诊断和评估工具', description: 'Utilize tools for diagnosing bridge damage and assessing its severity.' },
-    { id: 'decision_support_panel', title: '维护决策支持面板', description: 'Access panels to support maintenance decision-making processes.' },
+  const [searchResults, setSearchResults] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  // const graphRef = useRef(null); // For vis-network (damage trend)
+
+  const handleSearch = (value) => {
+    console.log('Searching Inspection/Maintenance KB for:', value);
+    setSearchResults([{ id: 'imsr1', title: `I&M result for ${value}`, description: 'Details...' }]);
+  };
+
+  const handleCalculateCostBenefit = (data) => {
+    console.log('Calculating Cost-Benefit:', data);
+    // Example: (annualBenefit * extendedLife - repairCost)
+    const netBenefit = (data.annualBenefit * data.extendedLife) - data.repairCost;
+    alert(`Net Benefit: $${netBenefit}`);
+  };
+
+  // For Detection Technology Wizard
+  const detectionWizardSteps = [
+    { title: 'Identify Need', content: 'What are you looking for?' },
+    { title: 'Select Method', content: 'Choose from available technologies.' },
+    { title: 'Review & Confirm', content: 'Confirm selection.' },
   ];
 
+  // useEffect(() => { // For vis-network (damage trend)
+  //   if (graphRef.current) {
+  //     const nodes = [ /* ...nodes for damage points over time... */ ];
+  //     const edges = [ /* ...edges showing progression... */ ];
+  //     const data = { nodes, edges };
+  //     const options = { /* ... */ };
+  //     new Network(graphRef.current, data, options);
+  //   }
+  // }, []);
+
+  // const getDamageTrendChartOptions = () => ({
+  //   xAxis: { type: 'category', data: ['2020', '2021', '2022', '2023', '2024'] },
+  //   yAxis: { type: 'value', name: 'Damage Index' },
+  //   series: [{ data: [10, 15, 12, 20, 25], type: 'line', smooth: true }],
+  //   tooltip: { trigger: 'axis' }
+  // });
+
+
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <header style={{ marginBottom: '30px', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>
-        <h1 style={{ fontSize: '2em', color: '#333' }}>桥梁检测维护知识库</h1>
-        <p style={{ fontSize: '1em', color: '#666' }}>Bridge Inspection & Maintenance Knowledge Base</p>
-      </header>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-        {kbSections.map(section => (
-          <div key={section.id} style={{ border: '1px solid #ddd', padding: '20px', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-            <h2 style={{ fontSize: '1.5em', color: '#444', marginBottom: '10px' }}>{section.title}</h2>
-            <p style={{ fontSize: '0.9em', color: '#777', lineHeight: '1.6' }}>
-              {section.description}
-            </p>
-            {/* Placeholder for future content or navigation link */}
-            <button
-              style={{
-                marginTop: '15px',
-                padding: '10px 15px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-              onClick={() => alert(`Navigating to ${section.title}... (Not implemented)`)}
-            >
-              进入模块 (Explore Section)
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <footer style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #eee', textAlign: 'center', color: '#888' }}>
-        <p>&copy; {new Date().getFullYear()} Bridge KG MVP Project. All rights reserved.</p>
-      </footer>
-    </div>
+    <Layout style={{ padding: '24px' }}>
+      <Content>
+        <Title level={2}>Inspection & Maintenance Knowledge Base</Title>
+        <ProfessionalSearch onSearch={handleSearch} />
+        <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+          <Col xs={24}>
+            <Tabs defaultActiveKey="1">
+              <TabPane tab="Detection Wizard" key="1">
+                <Card title="Detection Technology and Method Selection Wizard">
+                  <Steps current={currentStep}>
+                    {detectionWizardSteps.map(item => <Step key={item.title} title={item.title} />)}
+                  </Steps>
+                  <div className="steps-content" style={{marginTop: 16, padding: 16, border: '1px dashed #e9e9e9'}}>
+                    {detectionWizardSteps[currentStep].content}
+                  </div>
+                  <div className="steps-action" style={{marginTop: 16}}>
+                    {currentStep < detectionWizardSteps.length - 1 && (
+                      <Button type="primary" onClick={() => setCurrentStep(currentStep + 1)}>Next</Button>
+                    )}
+                    {currentStep === detectionWizardSteps.length - 1 && (
+                      <Button type="primary" onClick={() => alert('Wizard Completed!')}>Done</Button>
+                    )}
+                    {currentStep > 0 && (
+                      <Button style={{ margin: '0 8px' }} onClick={() => setCurrentStep(currentStep - 1)}>Previous</Button>
+                    )}
+                  </div>
+                </Card>
+              </TabPane>
+              <TabPane tab="Damage Diagnosis" key="2">
+                <Card title="Damage Type Identification and Diagnosis Tools">
+                  {mockDamageTypes.map(dt => <Paragraph key={dt.id}><b>{dt.name}:</b> {dt.diagnosis}</Paragraph>)}
+                  {/* Could add interactive diagnosis tool here */}
+                </Card>
+              </TabPane>
+              <TabPane tab="Maintenance Strategies" key="3">
+                <Card title="Maintenance Strategy Planning and Optimizer">
+                  {mockMaintenanceStrategies.map(ms => <Paragraph key={ms.id}><b>{ms.name}:</b> {ms.optimization}</Paragraph>)}
+                  {/* Optimizer UI could go here */}
+                </Card>
+              </TabPane>
+              <TabPane tab="Repair Techniques" key="4">
+                <Card title="Repair Technology Scheme Recommendation System">
+                  {mockRepairTechniques.map(rt => <Paragraph key={rt.id}><b>{rt.name}:</b> {rt.details}</Paragraph>)}
+                  {/* Recommendation system UI */}
+                </Card>
+              </TabPane>
+              <TabPane tab="Monitoring Config" key="5">
+                 <Card title="Monitoring Equipment Configuration and Parameters">
+                    {mockMonitoringDevices.map(d => <Paragraph key={d.id}><b>{d.name}:</b> {d.params}</Paragraph>)}
+                    {/* Configuration UI */}
+                 </Card>
+              </TabPane>
+              <TabPane tab="Damage Trend" key="6">
+                <Card title="Damage Development Trend Visualization">
+                  {/* <div ref={graphRef} style={{ height: '400px', border: '1px solid #eee' }} /> */}
+                  {/* <EChartsReact option={getDamageTrendChartOptions()} style={{ height: '400px' }} /> */}
+                  <Paragraph>Damage trend visualization (e.g., ECharts line chart or vis.js graph) will be here.</Paragraph>
+                </Card>
+              </TabPane>
+              <TabPane tab="Cost-Benefit Analysis" key="7">
+                <ParameterCalculator parameters={mockCostBenefitParams} onSubmit={handleCalculateCostBenefit} />
+              </TabPane>
+            </Tabs>
+          </Col>
+        </Row>
+        {searchResults.length > 0 && (
+          <Card title="Search Results" style={{marginTop: 24}}>
+            {searchResults.map(r => <Paragraph key={r.id}><b>{r.title}:</b> {r.description}</Paragraph>)}
+          </Card>
+        )}
+      </Content>
+    </Layout>
   );
 };
 
