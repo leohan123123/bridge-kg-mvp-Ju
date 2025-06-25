@@ -10,6 +10,7 @@ const { Option } = Select;
 const SEARCH_ENTITIES_URL = '/api/v1/rag/search'; // GET /api/v1/rag/search?query=...
 const GET_ENTITY_NEIGHBORHOOD_URL = (entityId) => `/api/v1/rag/entity/${entityId}/neighborhood`; // GET /api/v1/rag/entity/{entity_id}/neighborhood?max_depth=...
 const GET_GRAPH_STATS_URL = '/api/v1/rag/graph_stats'; // GET /api/v1/rag/graph_stats
+const PERFORMANCE_METRICS_URL = '/api/v1/performance/metrics'; // Added for performance monitoring
 
 // Available entity types for filtering (could be fetched or defined based on ontology)
 // These should ideally match the keys in BRIDGE_RAG_ONTOLOGY.
@@ -36,9 +37,25 @@ const GraphBrowser = () => {
   const [isStatsLoading, setIsStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState(null);
 
-  // Fetch graph statistics on component mount
+  // State for Performance Monitoring
+  const [performanceMetrics, setPerformanceMetrics] = useState(null);
+  const [isPerfMetricsLoading, setIsPerfMetricsLoading] = useState(false);
+  const [perfMetricsError, setPerfMetricsError] = useState(null);
+  const [perfMetricsIntervalId, setPerfMetricsIntervalId] = useState(null);
+
+
+  // Fetch graph statistics and start performance monitoring on component mount
   useEffect(() => {
     fetchGraphStats();
+    fetchPerformanceMetrics(); // Initial fetch
+    const intervalId = setInterval(fetchPerformanceMetrics, 15000); // Poll every 15 seconds
+    setPerfMetricsIntervalId(intervalId);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, []);
 
   const fetchGraphStats = async () => {
@@ -52,6 +69,23 @@ const GraphBrowser = () => {
       setStatsError(err.response?.data?.detail || 'Failed to fetch graph statistics.');
     } finally {
       setIsStatsLoading(false);
+    }
+  };
+
+  const fetchPerformanceMetrics = async () => {
+    setIsPerfMetricsLoading(true);
+    // Don't reset error on poll, only on explicit refresh or initial load
+    // setPerfMetricsError(null);
+    try {
+      const response = await axios.get(PERFORMANCE_METRICS_URL);
+      setPerformanceMetrics(response.data);
+      setPerfMetricsError(null); // Clear error on successful fetch
+    } catch (err) {
+      console.error('Error fetching performance metrics:', err);
+      setPerfMetricsError(err.response?.data?.detail || 'Failed to fetch performance metrics.');
+      // Don't stop polling on error, it might be temporary
+    } finally {
+      setIsPerfMetricsLoading(false);
     }
   };
 
@@ -264,25 +298,25 @@ const GraphBrowser = () => {
 
     return (
       <Card title="Graph Statistics" style={{ marginBottom: '20px' }}>
-        <Row gutter={16}>
-          <Col span={8}><Statistic title="Total Nodes" value={graphStats.total_nodes} /></Col>
-          <Col span={8}><Statistic title="Total Relationships" value={graphStats.total_relationships} /></Col>
-          <Col span={8}><Statistic title="Graph Density" value={graphStats.graph_density?.toFixed(4) || 'N/A'} /></Col>
+        <Row gutter={[16,16]}>
+          <Col xs={24} sm={8}><Statistic title="Total Nodes" value={graphStats.total_nodes} loading={isStatsLoading} /></Col>
+          <Col xs={24} sm={8}><Statistic title="Total Relationships" value={graphStats.total_relationships} loading={isStatsLoading} /></Col>
+          <Col xs={24} sm={8}><Statistic title="Graph Density" value={graphStats.graph_density?.toFixed(4) || 'N/A'} loading={isStatsLoading}/></Col>
         </Row>
-        <Row gutter={16} style={{marginTop: '20px'}}>
+        <Row gutter={16} style={{marginTop: '10px'}}>
             <Col span={24}>
                 <Text strong>Connectivity:</Text> <Text>{graphStats.connected_components_count || 'N/A'}</Text>
             </Col>
         </Row>
         {graphStats.node_type_distribution && Object.keys(graphStats.node_type_distribution).length > 0 && (
-          <Descriptions title="Node Type Distribution" bordered column={1} size="small" style={{ marginTop: '20px' }}>
+          <Descriptions title="Node Type Distribution" bordered column={{xs: 1, sm: 2}} size="small" style={{ marginTop: '15px' }}>
             {Object.entries(graphStats.node_type_distribution).map(([type, count]) => (
               <Descriptions.Item label={type} key={type}>{count}</Descriptions.Item>
             ))}
           </Descriptions>
         )}
         {graphStats.relationship_type_distribution && Object.keys(graphStats.relationship_type_distribution).length > 0 && (
-          <Descriptions title="Relationship Type Distribution" bordered column={1} size="small" style={{ marginTop: '20px' }}>
+          <Descriptions title="Relationship Type Distribution" bordered column={{xs: 1, sm: 2}} size="small" style={{ marginTop: '15px' }}>
             {Object.entries(graphStats.relationship_type_distribution).map(([type, count]) => (
               <Descriptions.Item label={type} key={type}>{count}</Descriptions.Item>
             ))}
@@ -292,10 +326,66 @@ const GraphBrowser = () => {
     );
   };
 
+  const renderPerformanceMonitoring = () => {
+    if (perfMetricsError && !performanceMetrics) { // Show error only if no data at all
+      return <Alert message={`Performance Metrics Error: ${perfMetricsError}`} type="error" showIcon style={{ marginBottom: '20px' }} />;
+    }
+    if (!performanceMetrics && isPerfMetricsLoading) {
+      return <div style={{ textAlign: 'center', padding: '20px' }}><Spin tip="Loading performance metrics..." /></div>;
+    }
+    if (!performanceMetrics) {
+      return <Empty description="Performance metrics are not available yet." style={{ marginBottom: '20px' }} />;
+    }
+
+    const { cpu_usage_percent, memory, disk_root, neo4j_db_metrics, cache_statistics } = performanceMetrics;
+
+    return (
+      <Card title="System Performance Monitor" style={{ marginBottom: '20px' }} extra={<Button size="small" onClick={fetchPerformanceMetrics} loading={isPerfMetricsLoading}>Refresh</Button>}>
+        {perfMetricsError && <Alert message={`Error refreshing metrics: ${perfMetricsError}`} type="warning" showIcon closable style={{marginBottom: '10px'}}/>}
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={8}>
+            <Statistic title="CPU Usage" value={cpu_usage_percent} suffix="%" />
+          </Col>
+          <Col xs={24} sm={12} md={8}>
+            <Statistic title="Memory Usage" value={memory?.used_percent} suffix="%" />
+            <Text type="secondary">{`Used: ${memory?.total_gb - memory?.available_gb || 'N/A'} GB / Total: ${memory?.total_gb || 'N/A'} GB`}</Text>
+          </Col>
+          <Col xs={24} sm={12} md={8}>
+            <Statistic title="Disk Usage (Root)" value={disk_root?.used_percent} suffix="%" />
+            <Text type="secondary">{`Used: ${disk_root?.used_gb || 'N/A'} GB / Total: ${disk_root?.total_gb || 'N/A'} GB`}</Text>
+          </Col>
+        </Row>
+
+        {cache_statistics && (
+          <Descriptions title="Cache Performance" bordered column={{xs:1, sm:2}} size="small" style={{ marginTop: '20px' }}>
+            <Descriptions.Item label="Hit Rate">{cache_statistics.hit_rate_percentage?.toFixed(2) || '0.00'}%</Descriptions.Item>
+            <Descriptions.Item label="Total Items">{cache_statistics.total_items || 0}</Descriptions.Item>
+            <Descriptions.Item label="Hits">{cache_statistics.hits || 0}</Descriptions.Item>
+            <Descriptions.Item label="Misses">{cache_statistics.misses || 0}</Descriptions.Item>
+          </Descriptions>
+        )}
+
+        {neo4j_db_metrics && (
+            <Descriptions title="Neo4j DB Metrics (Mocked)" bordered column={{xs:1, sm:2}} size="small" style={{ marginTop: '20px' }}>
+                <Descriptions.Item label="Node Count">{neo4j_db_metrics.node_count || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Relationship Count">{neo4j_db_metrics.relationship_count || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Store Size">{neo4j_db_metrics.store_size_bytes ? `${(neo4j_db_metrics.store_size_bytes / (1024*1024)).toFixed(2)} MB` : 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Page Cache Hit Ratio">{neo4j_db_metrics.page_cache_hit_ratio || 'N/A'}</Descriptions.Item>
+            </Descriptions>
+        )}
+         <Text type="secondary" style={{display: 'block', marginTop: '10px', fontSize: '0.8em'}}>
+            Last updated: {performanceMetrics.timestamp ? new Date(performanceMetrics.timestamp * 1000).toLocaleTimeString() : 'N/A'}
+        </Text>
+      </Card>
+    );
+  };
+
+
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: 'auto' }}>
-      <Title level={3} style={{ textAlign: 'center', marginBottom: '20px' }}>Knowledge Graph Browser & Statistics</Title>
+      <Title level={3} style={{ textAlign: 'center', marginBottom: '20px' }}>Knowledge Graph Browser & System Dashboard</Title>
 
+      {renderPerformanceMonitoring()}
       {renderGraphStatistics()}
 
       <Card title="Entity Search & Exploration" style={{ marginBottom: '20px' }}>
