@@ -1,0 +1,64 @@
+/* Default styles (mobile-first approach) */
+.mobile-layout {
+  padding: 10px;
+  background-color: #f0f2f5; /* Light grey background for mobile */
+}
+
+.mobile-layout p {
+  font-size: 14px;
+  color: #333;
+}
+
+/* Styles for small mobile screens (sm) */
+.mobile-layout.sm {
+  /* Specific styles for sm screens if needed */
+}
+
+/* Styles for extra small mobile screens (xs) */
+.mobile-layout.xs {
+  /* Specific styles for xs screens if needed */
+}
+
+/* Desktop layout styles */
+.desktop-layout {
+  padding: 20px;
+  background-color: #ffffff; /* White background for desktop */
+  border: 1px solid #d9d9d9; /* Light border for desktop */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+}
+
+.desktop-layout p {
+  font-size: 16px;
+  color: #000;
+}
+
+/* Specific styles for different desktop sizes if needed */
+.desktop-layout.md {
+  /* Medium desktop styles */
+}
+
+.desktop-layout.lg {
+  /* Large desktop styles */
+  max-width: 1200px;
+  margin: 0 auto; /* Center content on very large screens */
+}
+
+.desktop-layout.xl {
+  /* Extra large desktop styles */
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.desktop-layout.xxl {
+  /* Extra extra large desktop styles */
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* Example content styling */
+.content {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #e6f7ff; /* Light blue background for content area */
+  border-radius: 4px;
+}

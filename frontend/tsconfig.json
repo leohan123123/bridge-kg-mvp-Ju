@@ -26,6 +26,6 @@
     //   "@/*": ["src/*"]
     // }
   },
-  "include": ["src", "vite.config.ts"], // 确保 vite.config.ts 也被检查
+  "include": ["src"], // vite.config.ts is handled by tsconfig.node.json
   "references": [{ "path": "./tsconfig.node.json" }]
 }
