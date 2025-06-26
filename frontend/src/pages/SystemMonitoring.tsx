@@ -1,11 +1,55 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Row, Col, Card, Typography, Spin, Alert, Statistic, Progress, Tag, Space, Button } from 'antd';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Layout, Row, Col, Card, Typography, Spin, Alert, Statistic, Progress, Tag, Space, Button, DatePicker } from 'antd';
 import { LineChart } from '../components/visualization/ChartComponents'; // Using LineChart stub
 import { MetricCard, RealTimeChart } from '../components/visualization/PerformanceMetrics'; // MetricCard and RealTimeChart stubs
+import { debounce } from 'lodash'; // Or your preferred debounce implementation for date range changes
 import { getSystemMetrics, getPerformanceData, getSystemHealth, getAlertStatus } from '../services/advancedApi';
 
 const { Content } = Layout;
 const { Title, Paragraph, Text } = Typography;
+
+// Define interfaces for system metrics and chart data
+interface MemoryUsage {
+  used: number;
+  total: number;
+  unit: string;
+}
+interface DiskIO {
+  read: number;
+  write: number;
+  unit: string;
+}
+interface NetworkTraffic {
+  sent: number;
+  received: number;
+  unit: string;
+}
+interface SystemMetricsData {
+  cpuUsage: number;
+  memoryUsage: MemoryUsage;
+  diskIO: DiskIO;
+  networkTraffic: NetworkTraffic;
+  // other metrics as needed
+}
+interface CpuUsageChartData {
+  labels: string[];
+  datasets: Array<{
+    label?: string; // Optional label for the dataset
+    data: number[];
+    borderColor?: string;
+    tension?: number;
+    type?: string; // for ECharts, if combined with other types
+  }>;
+}
+
+interface PageProps {}
+
+interface PageState {
+  loading: boolean;
+  error: string | null;
+  systemMetrics: SystemMetricsData | null;
+  cpuUsageData: CpuUsageChartData;
+}
 
 /**
  * SystemMonitoring Page
@@ -13,11 +57,46 @@ const { Title, Paragraph, Text } = Typography;
  * Offers real-time and historical monitoring of system performance,
  * including CPU, memory, disk I/O, network, database, and API performance.
  */
-const SystemMonitoring: React.FC = () => {
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [systemMetrics, setSystemMetrics] = useState<any>(null); // For overall system stats
-  const [cpuUsageData, setCpuUsageData] = useState<any>({ labels: [], datasets: [{ data: [] }] }); // For CPU chart
+const SystemMonitoring: React.FC<PageProps> = () => {
+  const [loading, setLoading] = useState<PageState['loading']>(true);
+  const [error, setError] = useState<PageState['error']>(null);
+  const [systemMetrics, setSystemMetrics] = useState<PageState['systemMetrics']>(null);
+  const [cpuUsageData, setCpuUsageData] = useState<PageState['cpuUsageData']>({ labels: [], datasets: [{ data: [] }] });
+  const [timeRange, setTimeRange] = useState<[string, string] | null>(null); // For date pickers
+
+  // Performance Optimization Presets (Example for a log list if added later)
+  const paginationConfig = useMemo(() => ({
+    defaultPageSize: 20,
+    showSizeChanger: true,
+    showQuickJumper: true,
+    showTotal: (total: number) => `共 ${total} 项`,
+  }), []);
+
+  const fetchHistoricalData = useCallback(async (range: [string, string] | null) => {
+    if (!range) return;
+    console.log('Fetching historical data for range:', range);
+    // setLoading(true);
+    // try {
+      // const historicalData = await getPerformanceData({ timeRange: range });
+      // Update relevant charts with historicalData
+      // For example, update cpuUsageData or other chart states
+    // } catch (err) {
+      // setError('Failed to load historical performance data.');
+    // } finally {
+      // setLoading(false);
+    // }
+  }, []); // Add dependencies like getPerformanceData if they are not stable
+
+  const debouncedFetchHistoricalData = useMemo(
+    () => debounce(fetchHistoricalData, 500),
+    [fetchHistoricalData]
+  );
+
+  const handleTimeRangeChange = (dates: any, dateStrings: [string, string]) => {
+    setTimeRange(dateStrings);
+    debouncedFetchHistoricalData(dateStrings);
+  };
+
 
   useEffect(() => {
     const fetchInitialData = async () => {

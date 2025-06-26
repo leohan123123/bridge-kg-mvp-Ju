@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Row, Col, Card, Select, Checkbox, Slider, Button, Typography, Space, Divider, Tabs } from 'antd';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Layout, Row, Col, Card, Select, Checkbox, Slider, Button, Typography, Space, Divider, Tabs, Input } from 'antd';
+import { debounce } from 'lodash'; // Or your preferred debounce implementation
 import GraphRenderer from '../components/visualization/GraphRenderer';
 import FilterPanel from '../components/visualization/FilterPanel'; // Basic integration for now
 import { getGraphData, getGraphAnalytics } from '../services/advancedApi'; // Assuming API functions
@@ -8,19 +9,31 @@ const { Content, Sider } = Layout;
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
+interface PageProps {
+  // 根据实际需要定义
+}
+
+interface PageState {
+  loading: boolean;
+  graphData: { nodes: any[]; edges: any[] };
+  error: string | null;
+  // Add other state properties as needed, e.g., filters, selections
+  visualizationType: string;
+}
+
 /**
  * AdvancedGraphVisualization Page
  *
  * Displays complex graph visualizations with interactive features.
  * Allows users to explore, filter, and analyze graph data in multiple dimensions.
  */
-const AdvancedGraphVisualization: React.FC = () => {
-  const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+const AdvancedGraphVisualization: React.FC<PageProps> = () => {
+  const [graphData, setGraphData] = useState<PageState['graphData']>({ nodes: [], edges: [] });
+  const [loading, setLoading] = useState<PageState['loading']>(true);
+  const [error, setError] = useState<PageState['error']>(null);
 
   // Selected visualization type
-  const [visualizationType, setVisualizationType] = useState<string>('2d-network');
+  const [visualizationType, setVisualizationType] = useState<PageState['visualizationType']>('2d-network');
   // TODO: Add more states for filters, selected nodes/edges, analysis results etc.
 
   useEffect(() => {
@@ -70,6 +83,31 @@ const AdvancedGraphVisualization: React.FC = () => {
     // TODO: Implement filter logic, e.g., refetch graph data with filters
   };
 
+  // Performance Optimization Presets
+  const paginationConfig = useMemo(() => ({ // Added useMemo for stable ref if passed as prop
+    defaultPageSize: 20,
+    showSizeChanger: true,
+    showQuickJumper: true,
+    showTotal: (total: number) => `共 ${total} 项`,
+  }), []);
+
+  // Debounced search function
+  const performSearch = useCallback((value: string) => {
+    // Actual search logic would go here, e.g., updating filters or fetching data
+    console.log('Debounced search for:', value);
+    // Example: refetchDataWithSearchTerm(value);
+  }, []); // Add dependencies if performSearch uses state/props
+
+  const debouncedSearch = useMemo(
+    () => debounce(performSearch, 300),
+    [performSearch] // Recreate debounce if performSearch changes
+  );
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    debouncedSearch(e.target.value);
+  };
+
+
   return (
     <Layout style={{ minHeight: 'calc(100vh - 120px)', padding: '20px' }}>
       <Sider width={300} theme="light" style={{ padding: '10px', marginRight: '20px', borderRadius: '8px', overflowY: 'auto' }}>
@@ -106,8 +144,13 @@ const AdvancedGraphVisualization: React.FC = () => {
           </Card>
 
           <Card size="small" title="Graph Search">
-            {/* Placeholder for graph search and path finding */}
-            <p>Search and path finding (TBD)</p>
+            <Input
+              placeholder="Search nodes/relationships..."
+              onChange={handleSearchInputChange}
+              allowClear
+            />
+            {/* Further path finding UI can be added here */}
+            <p style={{marginTop: '8px'}}>Path finding (TBD)</p>
           </Card>
 
           <Card size="small" title="Layout & Style">

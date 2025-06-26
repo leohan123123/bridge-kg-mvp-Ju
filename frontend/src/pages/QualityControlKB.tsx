@@ -10,39 +10,82 @@ const { Content } = Layout;
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
+// Interfaces for Mock Data / API Data
+interface QualityStandardNode { // For KnowledgeTree
+  title: string;
+  key: string;
+  children?: QualityStandardNode[];
+  // Add other properties if needed for interaction
+}
+
+interface AcceptanceNorm {
+  id: string;
+  name: string;
+  details: string;
+  // other properties for StandardsComparator if needed
+}
+
+interface ChecklistItem {
+  id: string;
+  label: string;
+  // checked?: boolean; // if interactive checklist items
+}
+
+interface QualityProblem {
+    id: string;
+    name: string;
+    diagnosis: string;
+    solution: string;
+}
+
+interface SearchResultItem {
+  id: string;
+  title: string;
+  description: string;
+}
+
+
 // Mock Data - Replace with API calls
-const mockQualityStandards = [
+const mockQualityStandards: QualityStandardNode[] = [
   { title: 'National Standard GB/T 50300', key: 'gb50300', children: [{title: 'Section 1', key: 'gb50300-1'}, {title: 'Section 2', key: 'gb50300-2'}] },
   { title: 'Industry Standard JTG F80', key: 'jtgf80' },
 ];
 
-const mockAcceptanceNorms = [
+const mockAcceptanceNorms: AcceptanceNorm[] = [
   { id: 'an1', name: 'Concrete Strength Acceptance Criteria', details: 'Based on 28-day compressive strength tests...' },
   { id: 'an2', name: 'Steel Weld Inspection Criteria', details: 'Visual and NDT requirements...' },
 ];
 
-const mockGeneratedChecklistItems = [
+const mockGeneratedChecklistItems: ChecklistItem[] = [
     // Items would be generated based on context
 ];
 
-const mockQualityProblems = [
+const mockQualityProblems: QualityProblem[] = [
     {id: 'qp1', name: 'Concrete Honeycombing', diagnosis: 'Insufficient vibration during pouring.', solution: 'Grout repair or remove and recast.'},
     {id: 'qp2', name: 'Weld Porosity', diagnosis: 'Contamination or improper technique.', solution: 'Grind out and re-weld.'},
 ];
 
-const QualityControlKB = () => {
-  const [searchResults, setSearchResults] = useState([]);
-  const [generatedChecklist, setGeneratedChecklist] = useState(mockGeneratedChecklistItems);
-  const [standardsToCompare, setStandardsToCompare] = useState([]); // IDs of standards
+interface PageProps {}
 
-  const handleSearch = (value) => {
+interface PageState {
+  searchResults: SearchResultItem[];
+  generatedChecklist: ChecklistItem[];
+  standardsToCompare: string[]; // IDs of standards
+  // Add loading/error states if API calls are introduced
+}
+
+const QualityControlKB: React.FC<PageProps> = () => {
+  const [searchResults, setSearchResults] = useState<PageState['searchResults']>([]);
+  const [generatedChecklist, setGeneratedChecklist] = useState<PageState['generatedChecklist']>(mockGeneratedChecklistItems);
+  const [standardsToCompare, setStandardsToCompare] = useState<PageState['standardsToCompare']>([]);
+
+  const handleSearch = (value: string): void => {
     console.log('Searching Quality Control KB for:', value);
     setSearchResults([{ id: 'qcsr1', title: `QC result for ${value}`, description: 'Details...' }]);
   };
 
-  const handleGenerateChecklist = () => {
+  const handleGenerateChecklist = (): void => {
     console.log('Generating quality inspection checklist...');
-    // This would involve logic to select relevant checklist items based on project phase, type, etc.
     setGeneratedChecklist([
       { id: 'gen_qc1', label: 'Verify material certificates' },
       { id: 'gen_qc2', label: 'Check formwork dimensions' },
@@ -50,12 +93,12 @@ const QualityControlKB = () => {
     ]);
   };
 
-  const handleCompareStandards = () => {
+  const handleCompareStandards = (): void => {
     console.log('Comparing selected standards:', standardsToCompare);
-    // Fetch details of standards and display comparison
+    // Fetch details of standards and display comparison logic here
   };
 
-  // const getQualityDataStatsOptions = () => ({ // For ECharts
+  // const getQualityDataStatsOptions = (): echarts.EChartsOption => ({ // For ECharts
   //   xAxis: { type: 'category', data: ['Batch A', 'Batch B', 'Batch C', 'Batch D'] },
   //   yAxis: { type: 'value', name: 'Compliance Rate (%)' },
   //   series: [{ data: [95, 98, 92, 99], type: 'bar' }],

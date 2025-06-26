@@ -2,7 +2,19 @@ import React from 'react';
 import { Result, Button } from 'antd';
 import { Link } from 'react-router-dom';
 
-const NotFoundPage: React.FC = () => {
+interface PageProps {
+  // 根据实际需要定义
+}
+
+// PageState might not be needed for a static page like NotFound
+// interface PageState {
+//   loading: boolean;
+//   data: any[];
+//   error: string | null;
+// }
+
+const NotFoundPage: React.FC<PageProps> = () => {
+  // 组件实现
   return (
     <Result
       status="404"

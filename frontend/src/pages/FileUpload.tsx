@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ChangeEvent } from 'react';
 import { Upload, message, Button, List, Typography, Progress, Space, Alert, Modal, Tag, Divider, Descriptions } from 'antd';
+import type { UploadProps, UploadFile, UploadChangeParam } from 'antd/es/upload/interface';
 import { InboxOutlined, FileTextOutlined, CheckCircleOutlined, LoadingOutlined, ExperimentOutlined, ApartmentOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import axios from '../utils/axios'; // Assuming axios is configured for backend calls
 
 const { Dragger } = Upload;
-const { Text, Link, Paragraph, Title } = Typography;
+const { Text, Paragraph, Title } = Typography; // Link was unused
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_FILE_TYPES = ['.dxf', '.pdf', '.ifc', '.txt', '.md']; // Added .txt, .md for easier testing
@@ -23,38 +24,98 @@ const ENTITY_TYPE_COLORS = {
   // Add more colors if new types are introduced
 };
 
-const FileUpload = () => {
+// Interface for backend file upload response
+interface FileUploadResponse {
+  filename: string;
+  content_type: string;
+  size: number;
+  uploaded_at: string; // Assuming ISO string date
+  file_path: string; // Relative path on server
+  // Include originFileObj for client-side operations if needed, but not from backend
+  originFileObj?: File; // Ant Design's UploadFile has this
+}
+
+// Interface for PDF extraction response
+interface PdfExtractResponse {
+  text_content: string;
+  num_pages?: number; // Optional
+}
+
+// Interface for Graph Build API response
+interface GraphBuildResponse {
+  document_name: string;
+  status: string;
+  unique_entities_processed?: number;
+  entities_found_by_category?: Record<string, number>;
+  relationships_extracted?: number;
+  relationships_created_in_db?: number;
+  error?: string;
+  // Any other fields backend might return
+}
+
+interface GraphBuildProgressState {
+  step: string;
+  percent: number;
+  message: string;
+}
+
+interface PageProps {} // No props expected
+
+interface PageState {
+  fileList: UploadFile[]; // From Ant Design
+  uploading: boolean;
+  overallProgress: number;
+  uploadError: string | null;
+  uploadedFilesInfo: FileUploadResponse[]; // Store info from backend for successfully uploaded files
+
+  isModalVisible: boolean;
+  modalContent: string;
+  modalTitle: string;
+  isExtractingText: boolean;
+  currentFilenameForModal: string;
+  currentFileContentForModal: string;
+
+  isBuildingGraph: boolean;
+  graphBuildProgress: GraphBuildProgressState;
+  graphBuildResult: GraphBuildResponse | null;
+  graphBuildError: string | null;
+}
+
+
+const FileUpload: React.FC<PageProps> = () => {
   const navigate = useNavigate();
-  const [fileList, setFileList] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [overallProgress, setOverallProgress] = useState(0);
-  const [uploadError, setUploadError] = useState(null);
-  const [uploadedFilesInfo, setUploadedFilesInfo] = useState([]);
+  const [fileList, setFileList] = useState<PageState['fileList']>([]);
+  const [uploading, setUploading] = useState<PageState['uploading']>(false);
+  const [overallProgress, setOverallProgress] = useState<PageState['overallProgress']>(0);
+  const [uploadError, setUploadError] = useState<PageState['uploadError']>(null);
+  const [uploadedFilesInfo, setUploadedFilesInfo] = useState<PageState['uploadedFilesInfo']>([]);
 
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [modalContent, setModalContent] = useState(''); // Holds PDF text
-  const [modalTitle, setModalTitle] = useState('');
-  const [isExtractingText, setIsExtractingText] = useState(false);
-  const [currentFilenameForModal, setCurrentFilenameForModal] = useState('');
-  const [currentFileContentForModal, setCurrentFileContentForModal] = useState('');
+  const [isModalVisible, setIsModalVisible] = useState<PageState['isModalVisible']>(false);
+  const [modalContent, setModalContent] = useState<PageState['modalContent']>('');
+  const [modalTitle, setModalTitle] = useState<PageState['modalTitle']>('');
+  const [isExtractingText, setIsExtractingText] = useState<PageState['isExtractingText']>(false);
+  const [currentFilenameForModal, setCurrentFilenameForModal] = useState<PageState['currentFilenameForModal']>('');
+  const [currentFileContentForModal, setCurrentFileContentForModal] = useState<PageState['currentFileContentForModal']>('');
 
+  const [isBuildingGraph, setIsBuildingGraph] = useState<PageState['isBuildingGraph']>(false);
+  const [graphBuildProgress, setGraphBuildProgress] = useState<PageState['graphBuildProgress']>({ step: '', percent: 0, message: '' });
+  const [graphBuildResult, setGraphBuildResult] = useState<PageState['graphBuildResult']>(null);
+  const [graphBuildError, setGraphBuildError] = useState<PageState['graphBuildError']>(null);
 
-  // State for Knowledge Graph Building
-  const [isBuildingGraph, setIsBuildingGraph] = useState(false);
-  const [graphBuildProgress, setGraphBuildProgress] = useState({ step: '', percent: 0, message: '' });
-  const [graphBuildResult, setGraphBuildResult] = useState(null); // Stores the full response from build_graph
-  const [graphBuildError, setGraphBuildError] = useState(null);
-
-
-  const handleExtractText = async (fileInfo) => {
+  const handleExtractText = async (fileInfo: FileUploadResponse) => { // fileInfo is from our backend FileUploadResponse
     // If not PDF, maybe just read as text for .txt, .md
     if (!fileInfo.filename.toLowerCase().endsWith('.pdf')) {
         // For non-PDFs, attempt to read as plain text directly if it's a text-based format
-        if (fileInfo.originFileObj && (fileInfo.filename.toLowerCase().endsWith('.txt') || fileInfo.filename.toLowerCase().endsWith('.md'))) {
+        // fileInfo from uploadedFilesInfo might not have originFileObj if not added carefully.
+        // It's better to pass the AntD UploadFile object or ensure originFileObj is correctly propagated.
+        // For this function, let's assume fileInfo *could* have originFileObj if it's from the initial list.
+        const antFile = fileList.find(f => f.name === fileInfo.filename); // Try to find original AntD file
+
+        if (antFile?.originFileObj && (fileInfo.filename.toLowerCase().endsWith('.txt') || fileInfo.filename.toLowerCase().endsWith('.md'))) {
             const reader = new FileReader();
-            reader.onload = (e) => {
-                setModalContent(e.target.result);
-                setCurrentFileContentForModal(e.target.result);
+            reader.onload = (e: ProgressEvent<FileReader>) => {
+                setModalContent(e.target?.result as string || '');
+                setCurrentFileContentForModal(e.target?.result as string || '');
                 setModalTitle(`Content of ${fileInfo.filename}`);
                 setIsModalVisible(true);
                 setCurrentFilenameForModal(fileInfo.filename);
@@ -64,15 +125,12 @@ const FileUpload = () => {
                 setModalContent(`Failed to read content from ${fileInfo.filename}`);
                 setIsModalVisible(true);
             }
-            reader.readAsText(fileInfo.originFileObj);
+            reader.readAsText(antFile.originFileObj);
             return;
         }
       message.info('Text extraction is primarily for PDF files. For other types, content will be used as is if possible.');
-      // For other non-PDFs, we might not have a preview, or allow building graph directly.
-      // For now, only enable modal for PDF and text files.
-      // If it's a DXF/IFC, graph building might happen differently (not covered by this text-based flow).
       setModalContent(`Text extraction/preview not available for ${fileInfo.filename}. You can try to build graph directly if applicable.`);
-      setCurrentFileContentForModal(''); // No text content for non-PDFs/non-text
+      setCurrentFileContentForModal('');
       setModalTitle(`File: ${fileInfo.filename}`);
       setIsModalVisible(true);
       setCurrentFilenameForModal(fileInfo.filename);
@@ -80,7 +138,7 @@ const FileUpload = () => {
     }
 
     setIsExtractingText(true);
-    setGraphBuildResult(null); // Clear previous graph build results
+    setGraphBuildResult(null);
     setGraphBuildError(null);
     setCurrentFilenameForModal(fileInfo.filename);
     setModalTitle(`Extracting text from ${fileInfo.filename}...`);
@@ -88,20 +146,20 @@ const FileUpload = () => {
     setIsModalVisible(true);
 
     try {
-      const relativePath = fileInfo.filename; // Assuming filename is the key backend uses
-      const response = await axios.post(PDF_EXTRACT_URL, { file_path: relativePath });
+      const relativePath = fileInfo.file_path || fileInfo.filename; // Prefer file_path from backend if available
+      const response = await axios.post<PdfExtractResponse>(PDF_EXTRACT_URL, { file_path: relativePath });
       setModalTitle(`Text from ${fileInfo.filename}`);
       if (response.data && response.data.text_content) {
         setModalContent(response.data.text_content);
-        setCurrentFileContentForModal(response.data.text_content); // Store for graph build
+        setCurrentFileContentForModal(response.data.text_content);
       } else {
         setModalContent('No text found or an error occurred during extraction.');
         setCurrentFileContentForModal('');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error extracting PDF text:', error);
       let errorText = 'Failed to extract text.';
-      if (error.response && error.response.data && error.response.data.detail) {
+      if (error.response?.data?.detail) {
         errorText = error.response.data.detail;
       } else if (error.message) {
         errorText = error.message;
@@ -115,7 +173,7 @@ const FileUpload = () => {
     }
   };
 
-  const handleModalClose = () => {
+  const handleModalClose = (): void => {
     setIsModalVisible(false);
     setModalContent('');
     setModalTitle('');
@@ -128,9 +186,8 @@ const FileUpload = () => {
     setGraphBuildError(null);
   };
 
-  const handleBuildGraph = async () => {
+  const handleBuildGraph = async (): Promise<void> => {
     if (!currentFileContentForModal && !currentFilenameForModal.toLowerCase().endsWith('.dxf') && !currentFilenameForModal.toLowerCase().endsWith('.ifc')) {
-        // If it's not a text-based flow and not a known direct-to-graph format
       message.error('No text content available to build graph. Please extract text from a PDF or use a text file.');
       return;
     }
@@ -145,46 +202,43 @@ const FileUpload = () => {
     setGraphBuildError(null);
 
     try {
-      // Simulate frontend progress for stages
       setGraphBuildProgress({ step: 'Step 1/3', percent: 30, message: 'Sending document to backend for processing...' });
 
-      // Backend's /api/v1/rag/build_graph expects: text_content, document_name
       const payload = {
-        text_content: currentFileContentForModal, // This will be empty for non-text files, backend should handle
+        text_content: currentFileContentForModal,
         document_name: currentFilenameForModal,
       };
 
-      const response = await axios.post(BUILD_GRAPH_URL, payload);
+      const response = await axios.post<GraphBuildResponse>(BUILD_GRAPH_URL, payload);
 
       setGraphBuildProgress({ step: 'Step 2/3', percent: 70, message: 'Backend processing entities and relationships...' });
-      // Simulate delay for backend processing visibility
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
 
-      if (response.data && response.data.status) {
-        if (response.data.status.includes("complete") || response.data.status.includes("success")) {
+      if (response.data) {
+        if (response.data.status?.includes("complete") || response.data.status?.includes("success")) {
           setGraphBuildResult(response.data);
           message.success(`Graph built for ${response.data.document_name}: ${response.data.status}`);
           setGraphBuildProgress({ step: 'Step 3/3', percent: 100, message: 'Graph construction finished!' });
-        } else if (response.data.status.includes("No entities found")) {
-            setGraphBuildResult(response.data); // Store partial success/info
+        } else if (response.data.status?.includes("No entities found")) {
+            setGraphBuildResult(response.data);
             message.warning(`Graph construction for ${response.data.document_name}: ${response.data.status}`);
             setGraphBuildProgress({ step: 'Step 3/3', percent: 100, message: response.data.status });
-        } else { // Other non-error statuses from backend
-            setGraphBuildResult(response.data);
-            message.info(`Graph construction for ${response.data.document_name}: ${response.data.status}`);
-            setGraphBuildProgress({ step: 'Step 3/3', percent: 100, message: response.data.status });
+        } else if (response.data.error) { // Explicit error field from backend
+             throw new Error(response.data.error);
         }
-      } else if (response.data && response.data.error) {
-        throw new Error(response.data.error);
-      }
-      else {
-        throw new Error('Unexpected response from build graph endpoint.');
+        else { // Other non-error statuses
+            setGraphBuildResult(response.data);
+            message.info(`Graph construction for ${response.data.document_name}: ${response.data.status || 'Process reported an unknown status.'}`);
+            setGraphBuildProgress({ step: 'Step 3/3', percent: 100, message: response.data.status || 'Process finished with unknown status.' });
+        }
+      } else {
+        throw new Error('Unexpected empty response from build graph endpoint.');
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error building knowledge graph:', error);
       let errorMsg = 'Failed to build knowledge graph.';
-      if (error.response && error.response.data && error.response.data.detail) {
+      if (error.response?.data?.detail) {
         errorMsg = error.response.data.detail;
       } else if (error.message) {
         errorMsg = error.message;
@@ -194,14 +248,12 @@ const FileUpload = () => {
       setGraphBuildProgress({ step: 'Error', percent: 100, message: 'An error occurred during graph construction.' });
     } finally {
       setIsBuildingGraph(false);
-      // Progress remains at 100 or error state. Result is stored in graphBuildResult or graphBuildError.
     }
   };
 
-
-  const handleFileChange = (info) => {
+  const handleFileChange = (info: UploadChangeParam<UploadFile<FileUploadResponse | FileUploadResponse[]>>) => {
     let newFileList = [...info.fileList];
-    setFileList(newFileList); // Update file list for display
+    setFileList(newFileList);
 
     const { status, response, name: fileName, originFileObj } = info.file;
 
@@ -210,42 +262,42 @@ const FileUpload = () => {
         setUploadError(null);
     } else if (status === 'done') {
         message.success(`${fileName} file uploaded successfully.`);
-        // Assuming backend returns a list of FileUploadResponse, even for a single file.
-        // And customRequest's onSuccess correctly passes the first item if only one.
-        const uploadedFileResponse = Array.isArray(response) ? response[0] : response;
+        // AntD's UploadFile<T> has `response` of type T.
+        // If backend returns a list for 'files' param, but customRequest sends one by one,
+        // the response for a single file should be FileUploadResponse, not FileUploadResponse[].
+        // Assuming response is FileUploadResponse based on `onSuccess(response.data[0] ...)` below.
+        const uploadedFileResponse = info.file.response as FileUploadResponse;
+
 
         if (uploadedFileResponse && uploadedFileResponse.filename) {
             setUploadedFilesInfo(prev => {
-                // Add file metadata along with the AntD file object for later use (like reading content)
                 const existingFile = prev.find(f => f.filename === uploadedFileResponse.filename);
                 if (!existingFile) {
-                    return [...prev, { ...uploadedFileResponse, originFileObj }];
+                    // Add originFileObj to the stored info if available from AntD file object
+                    return [...prev, { ...uploadedFileResponse, originFileObj: originFileObj }];
                 }
-                // If exists, update it (though less likely for new uploads)
-                return prev.map(f => f.filename === uploadedFileResponse.filename ? { ...uploadedFileResponse, originFileObj } : f);
+                return prev.map(f => f.filename === uploadedFileResponse.filename ? { ...uploadedFileResponse, originFileObj: originFileObj } : f);
             });
         }
-        // If it's the last file in the current batch being uploaded
         if (newFileList.every(f => f.status === 'done' || f.status === 'error')) {
             setUploading(false);
         }
     } else if (status === 'error') {
         const errorMsg = info.file.error?.message || `${fileName} file upload failed.`;
         message.error(errorMsg);
-        setUploadError(errorMsg); // Display a general error for the batch
+        setUploadError(errorMsg);
         if (newFileList.every(f => f.status === 'done' || f.status === 'error')) {
             setUploading(false);
         }
     }
 };
 
-
-  const draggerProps = {
+  const draggerProps: UploadProps = {
     name: 'files',
     multiple: true,
     accept: ALLOWED_FILE_TYPES.join(','),
     fileList: fileList,
-    beforeUpload: (file) => {
+    beforeUpload: (file: File): boolean | string => { // AntD type for beforeUpload
       setUploadError(null);
       const isAllowedType = ALLOWED_FILE_TYPES.some(type => file.name.toLowerCase().endsWith(type));
       if (!isAllowedType) {
@@ -261,26 +313,38 @@ const FileUpload = () => {
         setUploadError(errorMsg);
         return Upload.LIST_IGNORE;
       }
-      return true;
+      return true; // Or Upload.LIST_IGNORE if returning string
     },
-    customRequest: async ({ file, onSuccess, onError, onProgress }) => {
+    customRequest: async (options) => { // options is RcCustomRequestOptions
+      const { file, onSuccess, onError, onProgress } = options;
       const formData = new FormData();
-      // Backend API /api/v1/files/upload expects 'files: List[UploadFile]'
-      // When sending one by one via customRequest, it's still a list with one item.
-      formData.append('files', file);
+      // Ensure 'file' is treated as File object. AntD might pass RcFile which extends File.
+      formData.append('files', file as File);
 
       try {
-        const response = await axios.post(UPLOAD_URL, formData, {
+        // Assuming UPLOAD_URL expects a list of files and returns a list of responses.
+        // If customRequest processes one file, backend should ideally handle single file in 'files' field
+        // and return FileUploadResponse[] with one item.
+        const response = await axios.post<FileUploadResponse[]>(UPLOAD_URL, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (event) => {
-            const percent = Math.round((event.loaded / event.total) * 100);
-            onProgress({ percent }, file);
-            setOverallProgress(percent);
+          onUploadProgress: (event: ProgressEvent) => {
+            if (event.lengthComputable && onProgress) {
+              const percent = Math.round((event.loaded / event.total) * 100);
+              onProgress({ percent });
+              setOverallProgress(percent);
+            }
           },
         });
-        // response.data is List[FileUploadResponse], customRequest handles one file, so take first.
-        onSuccess(response.data[0] || response.data, file);
-      } catch (err) {
+        // Assuming backend returns an array, and for a single file upload, it's an array with one element.
+        if (onSuccess && response.data && response.data.length > 0) {
+          onSuccess(response.data[0]); // Pass the single FileUploadResponse object
+        } else if (onSuccess && response.data) { // Fallback if backend returns single object not in array
+           onSuccess(response.data as any); // This case should be clarified with backend spec
+        }
+         else {
+          throw new Error("Upload succeeded but response format was unexpected.");
+        }
+      } catch (err: any) {
         console.error("Upload error in customRequest:", err);
         let errorMessage = "Upload failed.";
         if (err.response) {
@@ -290,13 +354,15 @@ const FileUpload = () => {
         } else {
             errorMessage = err.message;
         }
-        onError(new Error(errorMessage), err.response?.data);
+        if (onError) {
+          onError(new Error(errorMessage), err.response?.data);
+        }
       }
     },
     onChange: handleFileChange,
-    onRemove: (file) => {
+    onRemove: (file: UploadFile): boolean => {
       setFileList(prev => prev.filter(item => item.uid !== file.uid));
-      setUploadedFilesInfo(prev => prev.filter(item => item.filename !== file.name)); // Use filename for matching backend info
+      setUploadedFilesInfo(prev => prev.filter(item => item.filename !== file.name));
       if (fileList.length === 1) {
         setUploadError(null);
       }
