@@ -10,59 +10,106 @@ const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 const { Step } = Steps;
 
+// Interfaces for Mock Data / API data
+interface DetectionMethod {
+  id: string;
+  name: string;
+  details: string;
+}
+interface DamageType {
+  id: string;
+  name: string;
+  diagnosis: string;
+}
+interface MaintenanceStrategy {
+  id: string;
+  name: string;
+  optimization: string;
+}
+interface RepairTechnique {
+  id: string;
+  name: string;
+  details: string;
+}
+interface MonitoringDevice {
+  id: string;
+  name: string;
+  params: string;
+}
+interface CostBenefitParam {
+  name: string;
+  label: string;
+  defaultValue: number;
+}
+interface SearchResultItem {
+  id: string;
+  title: string;
+  description: string;
+}
+interface WizardStep {
+  title: string;
+  content: string; // Could be React.ReactNode for richer content
+}
+
 // Mock Data - Replace with API calls
-const mockDetectionMethods = [
+const mockDetectionMethods: DetectionMethod[] = [
   { id: 'dm1', name: 'Visual Inspection', details: 'Basic visual check for cracks, spalls...' },
   { id: 'dm2', name: 'Ultrasonic Testing', details: 'Detect internal flaws using sound waves.' },
   { id: 'dm3', name: 'Infrared Thermography', details: 'Identify delamination or water ingress.' },
 ];
 
-const mockDamageTypes = [
+const mockDamageTypes: DamageType[] = [
   { id: 'dt1', name: 'Corrosion', diagnosis: 'Identify rust stains, section loss. Causes: moisture, chlorides.' },
   { id: 'dt2', name: 'Fatigue Cracking', diagnosis: 'Locate near stress concentrations. Causes: cyclic loading.' },
 ];
 
-const mockMaintenanceStrategies = [
+const mockMaintenanceStrategies: MaintenanceStrategy[] = [
   { id: 'ms1', name: 'Preventive Maintenance', optimization: 'Schedule regular inspections and minor repairs.' },
   { id: 'ms2', name: 'Corrective Maintenance', optimization: 'Repair as needed when damage occurs.' },
 ];
 
-const mockRepairTechniques = [
+const mockRepairTechniques: RepairTechnique[] = [
   { id: 'rt1', name: 'Patch Repair', details: 'For localized concrete damage.' },
   { id: 'rt2', name: 'CFRP Strengthening', details: 'For increasing load capacity.' },
 ];
 
-const mockMonitoringDevices = [
+const mockMonitoringDevices: MonitoringDevice[] = [
     { id: 'md1', name: 'Strain Gauges', params: 'Location, sampling rate' },
     { id: 'md2', name: 'Accelerometers', params: 'Sensitivity, frequency range' },
 ];
 
-const mockCostBenefitParams = [
+const mockCostBenefitParams: CostBenefitParam[] = [
     { name: 'repairCost', label: 'Repair Cost ($)', defaultValue: 10000 },
     { name: 'extendedLife', label: 'Extended Service Life (Years)', defaultValue: 5 },
     { name: 'annualBenefit', label: 'Annual Benefit ($/Year)', defaultValue: 3000 },
 ];
 
+interface PageProps {}
 
-const InspectionMaintenanceKB = () => {
-  const [searchResults, setSearchResults] = useState([]);
-  const [currentStep, setCurrentStep] = useState(0);
-  // const graphRef = useRef(null); // For vis-network (damage trend)
+interface PageState {
+  searchResults: SearchResultItem[];
+  currentStep: number;
+  // Add loading/error states if API calls are introduced
+}
 
-  const handleSearch = (value) => {
+const InspectionMaintenanceKB: React.FC<PageProps> = () => {
+  const [searchResults, setSearchResults] = useState<PageState['searchResults']>([]);
+  const [currentStep, setCurrentStep] = useState<PageState['currentStep']>(0);
+  // const graphRef = useRef<HTMLDivElement>(null); // For vis-network (damage trend)
+
+  const handleSearch = (value: string): void => {
     console.log('Searching Inspection/Maintenance KB for:', value);
     setSearchResults([{ id: 'imsr1', title: `I&M result for ${value}`, description: 'Details...' }]);
   };
 
-  const handleCalculateCostBenefit = (data) => {
+  const handleCalculateCostBenefit = (data: Record<string, number>): void => {
     console.log('Calculating Cost-Benefit:', data);
-    // Example: (annualBenefit * extendedLife - repairCost)
     const netBenefit = (data.annualBenefit * data.extendedLife) - data.repairCost;
     alert(`Net Benefit: $${netBenefit}`);
   };
 
   // For Detection Technology Wizard
-  const detectionWizardSteps = [
+  const detectionWizardSteps: WizardStep[] = [
     { title: 'Identify Need', content: 'What are you looking for?' },
     { title: 'Select Method', content: 'Choose from available technologies.' },
     { title: 'Review & Confirm', content: 'Confirm selection.' },

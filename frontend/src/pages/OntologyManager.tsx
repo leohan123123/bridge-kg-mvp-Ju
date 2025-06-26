@@ -67,24 +67,43 @@ interface NewSnapshotForm {
     description: string;
 }
 
+interface PageProps {
+  // No specific props for this page component
+}
 
-const OntologyManager: React.FC = () => {
-    const [ontologyStructure, setOntologyStructure] = useState<OntologyStructure | null>(null);
-    const [versions, setVersions] = useState<OntologyVersion[]>([]);
-    // const [updateSuggestions, setUpdateSuggestions] = useState<any>(null); // TODO: Define type for suggestions
+interface PageState {
+    ontologyStructure: OntologyStructure | null;
+    versions: OntologyVersion[];
+    // updateSuggestions: any | null; // Define type for suggestions
 
-    const [loadingStructure, setLoadingStructure] = useState<boolean>(false);
-    const [loadingVersions, setLoadingVersions] = useState<boolean>(false);
-    // const [loadingSuggestions, setLoadingSuggestions] = useState<boolean>(false);
+    loadingStructure: boolean;
+    loadingVersions: boolean;
+    // loadingSuggestions: boolean;
 
-    const [error, setError] = useState<string | null>(null);
+    error: string | null;
 
-    // Modal states
-    const [isEntityTypeModalVisible, setIsEntityTypeModalVisible] = useState<boolean>(false);
-    const [isRelationshipTypeModalVisible, setIsRelationshipTypeModalVisible] = useState<boolean>(false);
-    const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState<boolean>(false);
+    // Modal visibility
+    isEntityTypeModalVisible: boolean;
+    isRelationshipTypeModalVisible: boolean;
+    isSnapshotModalVisible: boolean;
+}
 
-    // Form instances
+
+const OntologyManager: React.FC<PageProps> = () => {
+    const [ontologyStructure, setOntologyStructure] = useState<PageState['ontologyStructure']>(null);
+    const [versions, setVersions] = useState<PageState['versions']>([]);
+    // const [updateSuggestions, setUpdateSuggestions] = useState<PageState['updateSuggestions']>(null);
+
+    const [loadingStructure, setLoadingStructure] = useState<PageState['loadingStructure']>(false);
+    const [loadingVersions, setLoadingVersions] = useState<PageState['loadingVersions']>(false);
+    // const [loadingSuggestions, setLoadingSuggestions] = useState<PageState['loadingSuggestions']>(false);
+
+    const [error, setError] = useState<PageState['error']>(null);
+
+    const [isEntityTypeModalVisible, setIsEntityTypeModalVisible] = useState<PageState['isEntityTypeModalVisible']>(false);
+    const [isRelationshipTypeModalVisible, setIsRelationshipTypeModalVisible] = useState<PageState['isRelationshipTypeModalVisible']>(false);
+    const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState<PageState['isSnapshotModalVisible']>(false);
+
     const [entityTypeForm] = Form.useForm<NewEntityTypeForm>();
     const [relationshipTypeForm] = Form.useForm<NewRelationshipTypeForm>();
     const [snapshotForm] = Form.useForm<NewSnapshotForm>();

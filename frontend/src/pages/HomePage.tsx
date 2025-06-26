@@ -8,9 +8,20 @@ interface HealthStatus {
   status: string;
 }
 
-const HomePage: React.FC = () => {
-  const [backendStatus, setBackendStatus] = useState<string>('检查中...');
-  const [loading, setLoading] = useState<boolean>(false);
+interface PageProps {
+  // 根据实际需要定义
+}
+
+interface PageState {
+  loading: boolean;
+  backendStatus: string;
+  error: string | null; // For general page errors, though not used in current logic
+}
+
+const HomePage: React.FC<PageProps> = () => {
+  const [backendStatus, setBackendStatus] = useState<PageState['backendStatus']>('检查中...');
+  const [loading, setLoading] = useState<PageState['loading']>(false);
+  // const [error, setError] = useState<PageState['error']>(null); // Example if needed
 
   const checkBackendHealth = async () => {
     setLoading(true);

@@ -6,7 +6,37 @@ import { getDashboardMetrics, getKnowledgeAnalytics, getUsageStatistics } from '
 
 const { Content } = Layout;
 const { Title, Paragraph } = Typography;
-const { RangePicker } = DatePicker;
+// const { RangePicker } = DatePicker; // RangePicker was not used
+
+// Define more specific types for dashboard data
+interface SystemOverviewData {
+  totalEntities: number;
+  totalRelations: number;
+  processedDocs: number;
+  activeUsers: number;
+  // Add other metrics as defined by API or requirements
+}
+
+interface KnowledgeAnalyticsData {
+  domainDistribution: Array<{ value: number; name: string }>;
+  growthTrend: {
+    dates: string[];
+    values: number[];
+  };
+  // Define other analytics structures like keywordCloud, qualityRadar etc.
+}
+
+interface PageProps {
+  // No specific props for this page
+}
+
+interface PageState {
+  loading: boolean;
+  error: string | null;
+  systemOverviewData: SystemOverviewData | null;
+  knowledgeAnalyticsData: KnowledgeAnalyticsData | null;
+  // Add other data states as needed
+}
 
 /**
  * ProfessionalDashboard Page
@@ -14,14 +44,12 @@ const { RangePicker } = DatePicker;
  * Provides a comprehensive overview of system statistics, knowledge analytics,
  * document processing, and user behavior through various charts and metrics.
  */
-const ProfessionalDashboard: React.FC = () => {
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+const ProfessionalDashboard: React.FC<PageProps> = () => {
+  const [loading, setLoading] = useState<PageState['loading']>(true);
+  const [error, setError] = useState<PageState['error']>(null);
 
-  // State for data - can be refined based on actual API responses
-  const [systemOverviewData, setSystemOverviewData] = useState<any>(null);
-  const [knowledgeAnalyticsData, setKnowledgeAnalyticsData] = useState<any>(null);
-  // Add states for other modules as they are developed
+  const [systemOverviewData, setSystemOverviewData] = useState<PageState['systemOverviewData']>(null);
+  const [knowledgeAnalyticsData, setKnowledgeAnalyticsData] = useState<PageState['knowledgeAnalyticsData']>(null);
 
   useEffect(() => {
     const fetchAllDashboardData = async () => {

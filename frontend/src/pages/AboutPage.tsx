@@ -4,7 +4,18 @@ import { GithubOutlined, UserOutlined } from '@ant-design/icons'; // 引入图�
 
 const { Title, Paragraph, Link } = Typography;
 
-const AboutPage: React.FC = () => {
+interface PageProps {
+  // 根据实际需要定义
+}
+
+interface PageState {
+  loading: boolean;
+  data: any[];
+  error: string | null;
+}
+
+const AboutPage: React.FC<PageProps> = () => {
+  // 组件实现
   return (
     <div>
       <Title level={2}>关于本项目</Title>
